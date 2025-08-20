@@ -313,7 +313,20 @@ popd
 # Optionally vendor native libs into wheel
 # --------------------------------------
 if command -v delocate-wheel >/dev/null 2>&1; then
-  delocate-wheel -w "$REPAIRED_DIR" "$WHEEL_DIR"/*.whl || true
+  # Derive deployment target from wheel tag if possible (e.g. macosx_14_0_arm64)
+  WHL=$(ls "$WHEEL_DIR"/*.whl | head -n1 || true)
+  if [[ -n "${WHL:-}" && "$WHL" =~ macosx_([0-9]+)_([0-9]+)_ ]]; then
+    export MACOSX_DEPLOYMENT_TARGET="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+  else
+    export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-11.0}
+  fi
+  ARCH=$(uname -m)
+  # Run delocate before temp dirs are cleaned so deps under $PREFIX_DIR are present
+  delocate-wheel \
+    --require-archs "$ARCH" \
+    --lib-path "$PREFIX_DIR/lib" \
+    -w "$REPAIRED_DIR" \
+    "$WHEEL_DIR"/*.whl || true
 elif command -v auditwheel >/dev/null 2>&1; then
   for whl in "$WHEEL_DIR"/*.whl; do
     auditwheel repair "$whl" -w "$REPAIRED_DIR" || true
