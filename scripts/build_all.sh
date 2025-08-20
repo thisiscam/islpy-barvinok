@@ -154,6 +154,13 @@ tar xfz "$SDIST"
 PKGDIR=$(echo islpy-*/)
 pushd "$PKGDIR"
 
+# Discover site-packages path for the active interpreter
+SITE_PACKAGES=$("$PYTHON_BIN" - <<'PY'
+import sysconfig
+print(sysconfig.get_paths()["purelib"])
+PY
+)
+
 # Patch project name in pyproject.toml (islpy -> islpy-barvinok)
 python - "$PWD/pyproject.toml" <<'PY'
 import sys
@@ -162,6 +169,30 @@ txt = open(pth, 'r', encoding='utf-8').read()
 txt = txt.replace('name = "islpy"', 'name = "islpy-barvinok"')
 open(pth, 'w', encoding='utf-8').write(txt)
 print('Patched project name to islpy-barvinok')
+PY
+
+# Ensure build-backend can be imported by adding backend-path to [build-system]
+python - "$PWD/pyproject.toml" <<'PY'
+import os, sys
+pth = sys.argv[1]
+site_pkgs = os.environ.get("SITE_PACKAGES", "")
+txt = open(pth, 'r', encoding='utf-8').read()
+if "[build-system]" in txt and site_pkgs:
+    head, rest = txt.split("[build-system]", 1)
+    sect_end = rest.find("\n[")
+    if sect_end == -1:
+        body, tail = rest, ""
+    else:
+        body, tail = rest[:sect_end], rest[sect_end:]
+    if "backend-path" not in body:
+        body = body.rstrip() + f"\nbackend-path = [\"{site_pkgs}\"]\n"
+        new_txt = head + "[build-system]" + body + tail
+        open(pth, 'w', encoding='utf-8').write(new_txt)
+        print('Inserted backend-path pointing to site-packages for backend import')
+    else:
+        print('backend-path already present; leaving as-is')
+else:
+    print('No [build-system] section found or SITE_PACKAGES empty; skipping backend-path injection')
 PY
 
 # Keep package import name as 'islpy' (no renaming, no import rewrites)
@@ -250,15 +281,31 @@ PY
 # Clear any inherited PYTHONPATH that might interfere with backend discovery
 unset PYTHONPATH
 
-"$PYTHON_BIN" -m build \
-  --wheel \
-  --no-isolation \
-  --outdir "$WHEEL_DIR" \
-  -Ccmake.define.USE_SHIPPED_ISL=OFF \
-  -Ccmake.define.USE_SHIPPED_IMATH=OFF \
-  -Ccmake.define.USE_BARVINOK=ON \
-  -Ccmake.define.ISL_INC_DIRS:LIST="$PREFIX_DIR/include" \
-  -Ccmake.define.ISL_LIB_DIRS:LIST="$PREFIX_DIR/lib"
+# Determine site-packages for the active interpreter to help PEP 517 backend import
+SITE_PACKAGES=$("$PYTHON_BIN" - <<'PY'
+import sysconfig
+print(sysconfig.get_paths()["purelib"])
+PY
+)
+
+env -i \
+  PYTHONNOUSERSITE=1 \
+  PATH="$PATH" \
+  HOME="${HOME:-/tmp}" \
+  TMPDIR="${TMPDIR:-/tmp}" \
+  LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+  DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH" \
+  ISLPY_VERSION="$ISLPY_VERSION" \
+  PEP517_BACKEND_PATH="$SITE_PACKAGES" \
+  "$PYTHON_BIN" -m build \
+    --wheel \
+    --no-isolation \
+    --outdir "$WHEEL_DIR" \
+    -Ccmake.define.USE_SHIPPED_ISL=OFF \
+    -Ccmake.define.USE_SHIPPED_IMATH=OFF \
+    -Ccmake.define.USE_BARVINOK=ON \
+    -Ccmake.define.ISL_INC_DIRS:LIST="$PREFIX_DIR/include" \
+    -Ccmake.define.ISL_LIB_DIRS:LIST="$PREFIX_DIR/lib"
 
 popd
 
