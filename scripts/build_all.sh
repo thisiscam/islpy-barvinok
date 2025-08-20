@@ -190,6 +190,19 @@ if txt2 != txt:
     print('Ensured tool.scikit-build.wheel.packages = ["islpy"]')
 PY
 
+# Loosen Python requirement to support building across 3.10–3.13
+python - "$PWD/pyproject.toml" <<'PY'
+import re, sys
+pth = sys.argv[1]
+txt = open(pth, 'r', encoding='utf-8').read()
+txt2 = re.sub(r"^requires-python\s*=\s*\"[^\"]*\"", "requires-python = \">=3.10,<3.14\"", txt, flags=re.M)
+if txt2 != txt:
+    open(pth, 'w', encoding='utf-8').write(txt2)
+    print('Relaxed requires-python to ">=3.10,<3.14"')
+else:
+    print('requires-python already suitable or not found; leaving as-is')
+PY
+
 # Ensure the linker can find freshly built libs during wheel build
 export LD_LIBRARY_PATH="$PREFIX_DIR/lib:${LD_LIBRARY_PATH:-}"
 export DYLD_LIBRARY_PATH="$PREFIX_DIR/lib:${DYLD_LIBRARY_PATH:-}"
@@ -215,14 +228,19 @@ else:
     print('islpy/version.py already patched or unexpected format; skipping.')
 PY
 
-# Build the wheel with Barvinok enabled
-"$PYTHON_BIN" -m pip wheel . -w "$WHEEL_DIR" \
-  --no-build-isolation \
-  --config-settings=cmake.define.USE_SHIPPED_ISL=OFF \
-  --config-settings=cmake.define.USE_SHIPPED_IMATH=OFF \
-  --config-settings=cmake.define.USE_BARVINOK=ON \
-  --config-settings=cmake.define.ISL_INC_DIRS:LIST="$PREFIX_DIR/include" \
-  --config-settings=cmake.define.ISL_LIB_DIRS:LIST="$PREFIX_DIR/lib"
+# Build the wheel with Barvinok enabled (use scikit-build-core CLI, no isolation)
+"$PYTHON_BIN" -m pip install --upgrade \
+  scikit-build-core nanobind pcpp typing_extensions \
+  flit_core hatchling setuptools wheel build cmake ninja || true
+"$PYTHON_BIN" -m scikit_build_core.build \
+  --wheel \
+  --out-dir "$WHEEL_DIR" \
+  --no-isolation \
+  -Ccmake.define.USE_SHIPPED_ISL=OFF \
+  -Ccmake.define.USE_SHIPPED_IMATH=OFF \
+  -Ccmake.define.USE_BARVINOK=ON \
+  -Ccmake.define.ISL_INC_DIRS:LIST="$PREFIX_DIR/include" \
+  -Ccmake.define.ISL_LIB_DIRS:LIST="$PREFIX_DIR/lib"
 
 popd
 
