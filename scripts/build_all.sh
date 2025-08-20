@@ -232,10 +232,10 @@ PY
 "$PYTHON_BIN" -m pip install --upgrade \
   scikit-build-core nanobind pcpp typing_extensions \
   flit_core hatchling setuptools wheel build cmake ninja || true
-"$PYTHON_BIN" -m scikit_build_core.build \
+"$PYTHON_BIN" -m build \
   --wheel \
-  --out-dir "$WHEEL_DIR" \
   --no-isolation \
+  --outdir "$WHEEL_DIR" \
   -Ccmake.define.USE_SHIPPED_ISL=OFF \
   -Ccmake.define.USE_SHIPPED_IMATH=OFF \
   -Ccmake.define.USE_BARVINOK=ON \
