@@ -203,6 +203,20 @@ else:
     print('requires-python already suitable or not found; leaving as-is')
 PY
 
+# Remove any backend-path from islpy's pyproject.toml to avoid outer project interference
+python - "$PWD/pyproject.toml" <<'PY'
+import re, sys
+pth = sys.argv[1]
+txt = open(pth, 'r', encoding='utf-8').read()
+# Remove backend-path line if present
+txt2 = re.sub(r"^backend-path\s*=.*$", "", txt, flags=re.M)
+if txt2 != txt:
+    open(pth, 'w', encoding='utf-8').write(txt2)
+    print('Removed backend-path from islpy pyproject.toml')
+else:
+    print('No backend-path found in islpy pyproject.toml')
+PY
+
 # Ensure the linker can find freshly built libs during wheel build
 export LD_LIBRARY_PATH="$PREFIX_DIR/lib:${LD_LIBRARY_PATH:-}"
 export DYLD_LIBRARY_PATH="$PREFIX_DIR/lib:${DYLD_LIBRARY_PATH:-}"
