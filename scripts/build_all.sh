@@ -56,9 +56,10 @@ fi
 "$PYTHON_BIN" -m pip install --upgrade build cmake ninja setuptools wheel || true
 # Pre-install upstream islpy build dependencies to avoid PEP 517 build isolation
 # failures on certain platforms (e.g., macOS arm64 Python 3.10) and speed up builds.
+# Include transitive backend deps that may otherwise be built from sdist.
 "$PYTHON_BIN" -m pip install --upgrade \
   scikit-build-core nanobind pcpp typing_extensions \
-  tomli flit_core hatchling || true
+  tomli flit_core hatchling trove-classifiers calver || true
 
 # ------------------------------
 # Build GMP into local PREFIX_DIR
@@ -123,7 +124,8 @@ popd
 # --------------------------------------
 pushd "$SRC_DIR"
 "$PYTHON_BIN" -m pip install --upgrade pip || true
-PIP_NO_BUILD_ISOLATION=1 "$PYTHON_BIN" -m pip download --no-binary=:all: "islpy==$ISLPY_VERSION"
+# Download only the islpy sdist itself; do not attempt to resolve or build dependencies here.
+PIP_NO_BUILD_ISOLATION=1 "$PYTHON_BIN" -m pip download --no-deps --no-binary=:all: "islpy==$ISLPY_VERSION"
 SDIST=$(ls islpy-*.tar.gz)
 if [[ -z "$SDIST" || ! -f "$SDIST" ]]; then
   echo "Failed to download islpy sdist" >&2
