@@ -5,6 +5,7 @@ import subprocess
 import tarfile
 import tempfile
 import zipfile
+import sys
 
 
 def _project_root() -> str:
@@ -18,6 +19,8 @@ def _run_build_all(temp_build_root: str) -> tuple[str, list[str]]:
     """
     env = os.environ.copy()
     env["BUILD_ROOT"] = temp_build_root
+    # Ensure the build uses the same Python interpreter/tag cibuildwheel is targeting
+    env["PYTHON_BIN"] = sys.executable
 
     script_path = os.path.join(_project_root(), "scripts", "build_all.sh")
     if not os.path.exists(script_path):

@@ -53,7 +53,12 @@ if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
   "$PYTHON_BIN" -m ensurepip --upgrade || true
 fi
 "$PYTHON_BIN" -m pip install --upgrade pip || true
-"$PYTHON_BIN" -m pip install --upgrade build cmake ninja || true
+"$PYTHON_BIN" -m pip install --upgrade build cmake ninja setuptools wheel || true
+# Pre-install upstream islpy build dependencies to avoid PEP 517 build isolation
+# failures on certain platforms (e.g., macOS arm64 Python 3.10) and speed up builds.
+"$PYTHON_BIN" -m pip install --upgrade \
+  scikit-build-core nanobind pcpp typing_extensions \
+  tomli flit_core hatchling || true
 
 # ------------------------------
 # Build GMP into local PREFIX_DIR
@@ -118,8 +123,33 @@ popd
 # --------------------------------------
 pushd "$SRC_DIR"
 "$PYTHON_BIN" -m pip install --upgrade pip || true
-"$PYTHON_BIN" -m pip download --no-binary=:all: "islpy==$ISLPY_VERSION"
-SDIST=$(ls islpy-*.tar.gz)
+SDIST=$(
+  "$PYTHON_BIN" - <<'PY'
+import json, os, sys, urllib.request
+ver = os.environ.get('ISLPY_VERSION')
+if not ver:
+    print('ISLPY_VERSION env var is required', file=sys.stderr)
+    sys.exit(1)
+url = f'https://pypi.org/pypi/islpy/{ver}/json'
+with urllib.request.urlopen(url) as resp:
+    data = json.load(resp)
+sdist_url = None
+for f in data.get('releases', {}).get(ver, []):
+    if f.get('packagetype') == 'sdist' and f.get('url', '').endswith('.tar.gz'):
+        sdist_url = f['url']
+        break
+if not sdist_url:
+    print('Could not find sdist URL for islpy', file=sys.stderr)
+    sys.exit(1)
+fn = sdist_url.rsplit('/', 1)[-1]
+urllib.request.urlretrieve(sdist_url, fn)
+print(fn)
+PY
+)
+if [[ -z "$SDIST" || ! -f "$SDIST" ]]; then
+  echo "Failed to download islpy sdist" >&2
+  exit 1
+fi
 rm -rf islpy-*/ || true
 tar xfz "$SDIST"
 PKGDIR=$(echo islpy-*/)
@@ -188,6 +218,7 @@ PY
 
 # Build the wheel with Barvinok enabled
 "$PYTHON_BIN" -m pip wheel . -w "$WHEEL_DIR" \
+  --no-build-isolation \
   --config-settings=cmake.define.USE_SHIPPED_ISL=OFF \
   --config-settings=cmake.define.USE_SHIPPED_IMATH=OFF \
   --config-settings=cmake.define.USE_BARVINOK=ON \
