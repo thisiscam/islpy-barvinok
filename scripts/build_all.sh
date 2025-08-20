@@ -16,13 +16,14 @@ PREFIX_DIR=${PREFIX_DIR:-"$BUILD_ROOT/prefix"}
 SRC_DIR=${SRC_DIR:-"$BUILD_ROOT/src"}
 WHEEL_DIR=${WHEEL_DIR:-"$BUILD_ROOT/wheelhouse"}
 REPAIRED_DIR=${REPAIRED_DIR:-"$BUILD_ROOT/wheelhouse-repaired"}
-ISLPY_VERSION=${ISLPY_VERSION:-2025.2.5}
+ISLPY_VERSION=${ISLPY_VERSION:-2025.2}
 GMP_VER=${GMP_VER:-6.3.0}
 NTL_VER=${NTL_VER:-10.5.0}
 BARVINOK_GIT_REV=${BARVINOK_GIT_REV:-barvinok-0.41.8}
 NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
 
 mkdir -p "$BUILD_ROOT" "$PREFIX_DIR" "$SRC_DIR" "$WHEEL_DIR" "$REPAIRED_DIR"
+export ISLPY_VERSION
 
 echo "Using BUILD_ROOT=$BUILD_ROOT"
 echo "Using PREFIX_DIR=$PREFIX_DIR"
@@ -124,8 +125,25 @@ popd
 # --------------------------------------
 pushd "$SRC_DIR"
 "$PYTHON_BIN" -m pip install --upgrade pip || true
-# Download only the islpy sdist itself; do not attempt to resolve or build dependencies here.
-PIP_NO_BUILD_ISOLATION=1 "$PYTHON_BIN" -m pip download --no-deps --no-binary=:all: "islpy==$ISLPY_VERSION"
+# Download the islpy sdist directly from PyPI JSON to avoid invoking any build backend.
+python - <<'PY'
+import json, os, sys, urllib.request
+ver = os.environ.get("ISLPY_VERSION", "").strip()
+if not ver:
+    print("Missing ISLPY_VERSION", file=sys.stderr)
+    sys.exit(1)
+api_url = f"https://pypi.org/pypi/islpy/{ver}/json"
+with urllib.request.urlopen(api_url) as resp:
+    data = json.load(resp)
+sdist = next((u for u in data.get("urls", []) if u.get("packagetype") == "sdist"), None)
+if not sdist:
+    print("No sdist found for islpy==" + ver, file=sys.stderr)
+    sys.exit(1)
+url = sdist["url"]
+filename = sdist["filename"]
+print(f"Downloading {url} -> {filename}")
+urllib.request.urlretrieve(url, filename)
+PY
 SDIST=$(ls islpy-*.tar.gz)
 if [[ -z "$SDIST" || ! -f "$SDIST" ]]; then
   echo "Failed to download islpy sdist" >&2
