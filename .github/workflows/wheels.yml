@@ -1,0 +1,37 @@
+name: Build wheels
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13, macos-14]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install cibuildwheel
+
+      - name: Build all (local build dir)
+        shell: bash
+        run: |
+          bash scripts/build_all.sh
+
+      - name: List wheels
+        run: |
+          ls -l wheelhouse-repaired || ls -l /tmp/wheelhouse

@@ -1,0 +1,52 @@
+[project]
+name = "islpy-barvinok"
+version = "0.1.0"
+description = "Binary wheels of islpy built with Barvinok and vendored native libs (Linux/macOS)."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "delocate>=0.13.0",
+]
+license = { file = "LICENSE" }
+authors = [{ name = "Cambridge Yang" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+]
+
+[project.urls]
+Homepage = "https://github.com/thisiscam/islpy-barvinok"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Notes:
+# - This project publishes prebuilt wheels only. Source builds are not supported.
+# - Wheels are produced via CI using scripts in scripts/ and cibuildwheel.
+
+[tool.cibuildwheel]
+build = [
+  "cp39-*",
+  "cp310-*",
+  "cp311-*",
+  "cp312-*",
+  "cp313-*",
+]
+skip = [
+  "*musllinux*",
+  "*win*",
+]
+test-command = "python -c \"import islpy, sys; print('ok', sys.version)\""
+
+[tool.cibuildwheel.macos]
+environment = { ISLPY_VERSION = "2025.2.5" }
+
+[tool.cibuildwheel.linux]
+environment = { ISLPY_VERSION = "2025.2.5" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["isply"]
