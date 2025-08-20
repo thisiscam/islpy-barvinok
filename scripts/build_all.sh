@@ -123,29 +123,8 @@ popd
 # --------------------------------------
 pushd "$SRC_DIR"
 "$PYTHON_BIN" -m pip install --upgrade pip || true
-SDIST=$(
-  "$PYTHON_BIN" - <<'PY'
-import json, os, sys, urllib.request
-ver = os.environ.get('ISLPY_VERSION')
-if not ver:
-    print('ISLPY_VERSION env var is required', file=sys.stderr)
-    sys.exit(1)
-url = f'https://pypi.org/pypi/islpy/{ver}/json'
-with urllib.request.urlopen(url) as resp:
-    data = json.load(resp)
-sdist_url = None
-for f in data.get('releases', {}).get(ver, []):
-    if f.get('packagetype') == 'sdist' and f.get('url', '').endswith('.tar.gz'):
-        sdist_url = f['url']
-        break
-if not sdist_url:
-    print('Could not find sdist URL for islpy', file=sys.stderr)
-    sys.exit(1)
-fn = sdist_url.rsplit('/', 1)[-1]
-urllib.request.urlretrieve(sdist_url, fn)
-print(fn)
-PY
-)
+PIP_NO_BUILD_ISOLATION=1 "$PYTHON_BIN" -m pip download --no-binary=:all: "islpy==$ISLPY_VERSION"
+SDIST=$(ls islpy-*.tar.gz)
 if [[ -z "$SDIST" || ! -f "$SDIST" ]]; then
   echo "Failed to download islpy sdist" >&2
   exit 1
