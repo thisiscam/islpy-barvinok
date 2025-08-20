@@ -242,10 +242,14 @@ else:
     print('islpy/version.py already patched or unexpected format; skipping.')
 PY
 
-# Build the wheel with Barvinok enabled (use scikit-build-core CLI, no isolation)
+# Build the wheel with Barvinok enabled
 "$PYTHON_BIN" -m pip install --upgrade \
   scikit-build-core nanobind pcpp typing_extensions \
   flit_core hatchling setuptools wheel build cmake ninja || true
+
+# Clear any inherited PYTHONPATH that might interfere with backend discovery
+unset PYTHONPATH
+
 "$PYTHON_BIN" -m build \
   --wheel \
   --no-isolation \

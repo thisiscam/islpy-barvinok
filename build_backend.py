@@ -22,6 +22,10 @@ def _run_build_all(temp_build_root: str) -> tuple[str, list[str]]:
     # Ensure the build uses the same Python interpreter/tag cibuildwheel is targeting
     env["PYTHON_BIN"] = sys.executable
 
+    # Clear environment variables that might interfere with inner build backend discovery
+    env.pop("PYTHONPATH", None)
+    env.pop("PEP517_BUILD_BACKEND", None)
+
     script_path = os.path.join(_project_root(), "scripts", "build_all.sh")
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Missing build script: {script_path}")
