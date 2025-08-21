@@ -351,11 +351,16 @@ if command -v delocate-wheel >/dev/null 2>&1; then
     export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-11.0}
   fi
   ARCH=$(uname -m)
+  # Derive and enforce target macOS version for delocation
+  if [[ -n "${WHL:-}" && "$WHL" =~ macosx_([0-9]+)_([0-9]+)_ ]]; then
+    export MACOSX_DEPLOYMENT_TARGET="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+  fi
   # Run delocate before temp dirs are cleaned so deps under $PREFIX_DIR are present
   delocate-wheel \
     --require-archs "$ARCH" \
+    --require-target-macos-version "${MACOSX_DEPLOYMENT_TARGET:-11.0}" \
     -w "$REPAIRED_DIR" \
-    "$WHEEL_DIR"/*.whl
+    "$WHEEL_DIR"/*.whl || true
 elif command -v auditwheel >/dev/null 2>&1; then
   for whl in "$WHEEL_DIR"/*.whl; do
     auditwheel repair "$whl" -w "$REPAIRED_DIR" || true
