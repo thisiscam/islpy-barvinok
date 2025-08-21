@@ -88,15 +88,26 @@ def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None): 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):  # noqa: N802
     with tempfile.TemporaryDirectory(prefix="islpy-barvinok-build-") as tmp:
         _, wheels = _run_build_all(tmp)
-        # Prefer a wheel that matches our distribution name
-        chosen = None
-        for whl in reversed(wheels):
-            base = os.path.basename(whl)
-            if base.startswith("islpy_barvinok-") or base.startswith("islpy-barvinok-"):
-                chosen = whl
+        # Prefer repaired wheels (wheelhouse-repaired) over raw wheels
+        repaired_wheels = [
+            w
+            for w in wheels
+            if os.path.basename(os.path.dirname(w)).endswith("wheelhouse-repaired")
+        ]
+        chosen: str | None = None
+        search_order = [repaired_wheels, wheels]
+        for seq in search_order:
+            for whl in reversed(seq):
+                base = os.path.basename(whl)
+                if base.startswith("islpy_barvinok-") or base.startswith(
+                    "islpy-barvinok-"
+                ):
+                    chosen = whl
+                    break
+            if chosen:
                 break
         if chosen is None:
-            chosen = wheels[-1]
+            chosen = repaired_wheels[-1] if repaired_wheels else wheels[-1]
         target = os.path.join(wheel_directory, os.path.basename(chosen))
         os.makedirs(wheel_directory, exist_ok=True)
         shutil.copy2(chosen, target)
