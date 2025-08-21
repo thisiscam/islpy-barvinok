@@ -56,7 +56,7 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: "bash -lc 'cp {wheel} {dest_dir}'"
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: "bash -lc 'cp {wheel} {dest_dir}'"
           BUILD_ROOT: ${{ github.workspace }}/build
-          CIBW_ENVIRONMENT_LINUX: BUILD_ROOT= /host/${{ github.workspace }}/build/
+          CIBW_ENVIRONMENT_LINUX: BUILD_ROOT=/host${{ github.workspace }}/build/
           # Install autotools in manylinux containers before building
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y autoconf automake libtool pkgconfig git curl || \
