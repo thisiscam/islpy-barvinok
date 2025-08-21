@@ -34,8 +34,8 @@ jobs:
         env:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BUILD: cp310-* cp311-* cp312-* cp313-*
-          # Skip external macOS repair; we vendor native libs inside our build script
-          CIBW_REPAIR_WHEEL_COMMAND_MACOS: ""
+          # Skip external repair; we vendor native libs inside our build script
+          CIBW_REPAIR_WHEEL_COMMAND: ":"
           # Install autotools in manylinux containers before building
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y autoconf automake libtool pkgconfig git curl || \

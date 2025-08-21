@@ -324,9 +324,8 @@ if command -v delocate-wheel >/dev/null 2>&1; then
   # Run delocate before temp dirs are cleaned so deps under $PREFIX_DIR are present
   delocate-wheel \
     --require-archs "$ARCH" \
-    --lib-path "$PREFIX_DIR/lib" \
     -w "$REPAIRED_DIR" \
-    "$WHEEL_DIR"/*.whl || true
+    "$WHEEL_DIR"/*.whl
 elif command -v auditwheel >/dev/null 2>&1; then
   for whl in "$WHEEL_DIR"/*.whl; do
     auditwheel repair "$whl" -w "$REPAIRED_DIR" || true
