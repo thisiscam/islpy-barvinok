@@ -33,7 +33,7 @@ jobs:
         id: restore-prefix
         uses: actions/cache/restore@v4
         with:
-          path: build/prefix
+          path: ${{ github.workspace }}/build/prefix
           key: prefix-${{ matrix.os }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8
           restore-keys: |
             prefix-${{ matrix.os }}-
