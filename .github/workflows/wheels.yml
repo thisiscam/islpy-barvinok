@@ -64,7 +64,12 @@ jobs:
           # Arch selection
           CIBW_ARCHS_LINUX: x86_64
           CIBW_ARCHS_MACOS: ${{ matrix.os == 'macos-13' && 'x86_64' || matrix.os == 'macos-14' && 'arm64' || '' }}
-        run: python -m cibuildwheel --output-dir wheelhouse
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse
+          # Copy /project/build (inside container) to /host/${{ github.workspace }}/build (host)
+          if [ -d /project/build ]; then
+            cp -a /project/build/. /host/${{ github.workspace }}/build/
+          fi
 
       - name: Save compiled prefix cache (GMP/NTL/Barvinok)
         if: always()
