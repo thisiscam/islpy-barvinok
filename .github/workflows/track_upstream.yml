@@ -1,0 +1,103 @@
+name: Track upstream islpy releases
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # daily at 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  track:
+    name: Check PyPI and open PR if new
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Determine current and latest upstream versions
+        id: versions
+        run: |
+          python - <<'PY'
+          import json, sys, urllib.request, re, pathlib, os
+
+          repo_root = pathlib.Path('.').resolve()
+          pyproject = (repo_root / 'pyproject.toml').read_text(encoding='utf-8')
+
+          # Extract current project version
+          m = re.search(r"^version\s*=\s*\"([^\"]+)\"", pyproject, flags=re.M)
+          if not m:
+            print("::error::Failed to find version in pyproject.toml", file=sys.stderr)
+            sys.exit(1)
+          current = m.group(1).strip()
+
+          # Query latest version from PyPI for islpy
+          with urllib.request.urlopen('https://pypi.org/pypi/islpy/json') as resp:
+            data = json.load(resp)
+          latest = data.get('info', {}).get('version', '').strip()
+          if not latest:
+            print('::error::Failed to get latest version from PyPI', file=sys.stderr)
+            sys.exit(1)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+            f.write(f"current={current}\n")
+            f.write(f"latest={latest}\n")
+          PY
+
+      - name: Update version files if needed
+        if: steps.versions.outputs.latest != steps.versions.outputs.current
+        run: |
+          set -euxo pipefail
+          LATEST="${{ steps.versions.outputs.latest }}"
+
+          # Update project version in pyproject.toml
+          python - <<'PY'
+          import re, pathlib, os
+          latest = os.environ['LATEST']
+          p = pathlib.Path('pyproject.toml')
+          txt = p.read_text(encoding='utf-8')
+          txt = re.sub(r"^(version\s*=\s*)\"[^\"]+\"", rf"\\1\"{latest}\"", txt, flags=re.M)
+          # Update ISLPY_VERSION in cibuildwheel env blocks (macOS and Linux)
+          txt = re.sub(r"(ISLPY_VERSION\s*=\s*)\"[^\"]+\"", rf"\\1\"{latest}\"", txt)
+          p.write_text(txt, encoding='utf-8')
+          PY
+
+          # Update default ISLPY_VERSION in build script
+          sed -i.bak -E "s/^(ISLPY_VERSION=\$\{ISLPY_VERSION:-)[^}]+\}/\\1${LATEST}}/" scripts/build_all.sh
+          rm -f scripts/build_all.sh.bak
+
+          echo "Changed files:" && git status --porcelain
+
+      - name: Create Pull Request
+        if: steps.versions.outputs.latest != steps.versions.outputs.current
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/update-islpy-${{ steps.versions.outputs.latest }}
+          delete-branch: true
+          commit-message: |
+            chore: bump islpy to ${{ steps.versions.outputs.latest }}
+          title: |
+            chore: bump islpy to ${{ steps.versions.outputs.latest }}
+          body: |
+            - Updates upstream islpy version to `${{ steps.versions.outputs.latest }}`
+            - Bumps `[project].version` and `ISLPY_VERSION` usages in `pyproject.toml`
+            - Updates default `ISLPY_VERSION` in `scripts/build_all.sh`
+
+            CI will build wheels via the existing `wheels.yml` workflow.
+          add-paths: |
+            pyproject.toml
+            scripts/build_all.sh
+
+      - name: No update needed
+        if: steps.versions.outputs.latest == steps.versions.outputs.current
+        run: echo "Upstream islpy is up-to-date; no changes."

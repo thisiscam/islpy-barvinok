@@ -33,7 +33,9 @@ build-backend = "build_backend"
 backend-path = ["."]
 
 # Notes:
-# - This project publishes prebuilt wheels only. Source builds are not supported.
+# - CI publishes prebuilt wheels for common platforms. If a wheel is unavailable,
+#   a PEP 517 from-source build is supported via the custom backend that runs
+#   scripts/build_all.sh.
 # - Wheels are produced via CI using scripts in scripts/ and cibuildwheel.
 
 [tool.cibuildwheel]

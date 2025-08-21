@@ -1,0 +1,58 @@
+name: Tag release on PR merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository at merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read version from pyproject.toml
+        id: ver
+        run: |
+          python - <<'PY'
+          import re, pathlib, os
+          txt = pathlib.Path('pyproject.toml').read_text(encoding='utf-8')
+          m = re.search(r"^version\s*=\s*\"([^\"]+)\"", txt, flags=re.M)
+          if not m:
+            raise SystemExit('::error::Failed to read version from pyproject.toml')
+          version = m.group(1).strip()
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+            f.write(f"version={version}\n")
+          PY
+
+      - name: Create and push tag if missing
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euxo pipefail
+          git fetch --tags
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "Tag v${VERSION} already exists; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" -m "islpy-barvinok ${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Note
+        run: echo "Pushed v${{ steps.ver.outputs.version }} tag. wheels.yml will build & publish to PyPI."

@@ -57,6 +57,9 @@ jobs:
     name: Publish to PyPI
     needs: [build_wheels]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
+      contents: read
     steps:
       - name: Download wheel artifacts
         uses: actions/download-artifact@v4
@@ -83,6 +86,5 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
           packages-dir: dist-all
           skip-existing: true

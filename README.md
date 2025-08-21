@@ -1,13 +1,16 @@
 # islpy-barvinok
 
-Binary wheels of islpy built with Barvinok, with native libraries vendored for Linux and macOS.
+Prebuilt wheels and from-source builds of islpy with Barvinok enabled, with native libraries vendored on Linux and macOS.
 
-This project is a wrapper/builder: it fetches upstream islpy sdist at a pinned version,
-builds Barvinok/NTL/ISL via a reproducible script, builds islpy with USE_BARVINOK=ON,
+This project is a wrapper/builder: it fetches the upstream `islpy` sdist at a pinned version,
+builds Barvinok/NTL/ISL via a reproducible script, builds `islpy` with `USE_BARVINOK=ON`,
 and publishes wheels. It keeps the import name as `islpy` for compatibility, while the
 distribution name on PyPI is `islpy-barvinok`.
 
-Windows is not supported.
+Supported platforms: Linux x86_64 (manylinux) and macOS 11+ (x86_64 and arm64).
+
+Upstream project: [inducer/islpy](https://github.com/inducer/islpy). This repo tracks upstream
+`islpy` releases on PyPI and rebuilds with Barvinok enabled.
 
 ## Usage
 
@@ -21,7 +24,7 @@ islpy.Set("[N] -> {[x, y] : x >= 0 and y >= 0 and x <= N and y <= N}").card()
 
 ## How the wheels are built (overview)
 
-- Build dependencies into a local prefix (default `islpy_barvinok/build/prefix`):
+- Build dependencies into a local prefix (default `build/prefix`):
   - GMP, NTL, ISL, Barvinok (from upstream sources)
 - Build islpy against the prefix with:
   - `-D USE_SHIPPED_ISL=OFF -D USE_SHIPPED_IMATH=OFF -D USE_BARVINOK=ON`
@@ -51,10 +54,14 @@ prefix under `build/`, builds islpy against that prefix with Barvinok enabled, a
 produces a wheel that `pip` installs. On macOS, native libraries may be vendored using
 `delocate` if available.
 
-Note: Network access is required during the build to download upstream sources.
+## Releases and automation
+
+- Upstream tracking: a scheduled workflow checks PyPI for new `islpy` releases and opens a PR bumping the pinned version.
+- Tagging: when such a PR is merged into `main`, another workflow tags the repo with `v<version>`.
+- Publishing: tags trigger CI to build wheels on Linux and macOS and publish to PyPI via Trusted Publishing (OIDC).
 
 ## Development
 
 - Single-script build:
   - `uv run bash scripts/build_all.sh`
-  - Wheels in `islpy_barvinok/build/wheelhouse` and `islpy_barvinok/build/wheelhouse-repaired`.
+  - Wheels in `build/wheelhouse` and `build/wheelhouse-repaired`.
