@@ -18,7 +18,10 @@ def _run_build_all(temp_build_root: str) -> tuple[str, list[str]]:
     Returns the directory containing produced wheels and the list of wheel paths.
     """
     env = os.environ.copy()
-    env["BUILD_ROOT"] = temp_build_root
+    # Use caller-provided BUILD_ROOT if available (e.g., CI cache path),
+    # otherwise default to a temporary directory
+    if "BUILD_ROOT" not in env or not env["BUILD_ROOT"].strip():
+        env["BUILD_ROOT"] = temp_build_root
     # Ensure the build uses the same Python interpreter/tag cibuildwheel is targeting
     env["PYTHON_BIN"] = sys.executable
 

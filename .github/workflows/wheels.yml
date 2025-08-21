@@ -54,6 +54,7 @@ jobs:
           CIBW_BUILD: cp310-* cp311-* cp312-* cp313-*
           # Pass-through external repair: just copy the already-repaired wheel
           CIBW_REPAIR_WHEEL_COMMAND: "bash -lc 'cp {wheel} {dest_dir}'"
+          BUILD_ROOT: ${{ github.workspace }}/build
           # Install autotools in manylinux containers before building
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y autoconf automake libtool pkgconfig git curl || \
