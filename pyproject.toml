@@ -52,8 +52,6 @@ skip = [
 test-command = "python -c \"import islpy, sys; print('ok', sys.version)\""
 
 [tool.cibuildwheel.macos]
-environment = { ISLPY_VERSION = "2025.2.5" }
 
 [tool.cibuildwheel.linux]
-environment = { ISLPY_VERSION = "2025.2.5" }
 

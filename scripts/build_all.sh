@@ -11,15 +11,33 @@ set -x
 # Configuration
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+# Load centralized configuration
+if [[ -f "$ROOT_DIR/config.sh" ]]; then
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/config.sh"
+fi
 BUILD_ROOT=${BUILD_ROOT:-"$ROOT_DIR/build"}
 PREFIX_DIR=${PREFIX_DIR:-"$BUILD_ROOT/prefix"}
 SRC_DIR=${SRC_DIR:-"$BUILD_ROOT/src"}
 WHEEL_DIR=${WHEEL_DIR:-"$BUILD_ROOT/wheelhouse"}
 REPAIRED_DIR=${REPAIRED_DIR:-"$BUILD_ROOT/wheelhouse-repaired"}
-ISLPY_VERSION=${ISLPY_VERSION:-2025.2}
-GMP_VER=${GMP_VER:-6.3.0}
-NTL_VER=${NTL_VER:-10.5.0}
-BARVINOK_GIT_REV=${BARVINOK_GIT_REV:-barvinok-0.41.8}
+# Resolve upstream islpy version: prefer env, else read from repo pyproject.toml
+if [[ -z "${ISLPY_VERSION:-}" ]]; then
+  ISLPY_VERSION=$(python - <<'PY'
+import pathlib, re
+txt = pathlib.Path('pyproject.toml').read_text(encoding='utf-8')
+m = re.search(r"^version\s*=\s*\"([^\"]+)\"", txt, flags=re.M)
+print(m.group(1) if m else "")
+PY
+)
+fi
+if [[ -z "${ISLPY_VERSION:-}" ]]; then
+  echo "ERROR: Could not determine ISLPY_VERSION from pyproject.toml or env" >&2
+  exit 1
+fi
+GMP_VER=${GMP_VER:-${GMP_VER}}
+NTL_VER=${NTL_VER:-${NTL_VER}}
+BARVINOK_GIT_REV=${BARVINOK_GIT_REV:-${BARVINOK_GIT_REV}}
 NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
 
 mkdir -p "$BUILD_ROOT" "$PREFIX_DIR" "$SRC_DIR" "$WHEEL_DIR" "$REPAIRED_DIR"
@@ -27,6 +45,12 @@ export ISLPY_VERSION
 
 echo "Using BUILD_ROOT=$BUILD_ROOT"
 echo "Using PREFIX_DIR=$PREFIX_DIR"
+if [[ -d "$PREFIX_DIR/lib" && -f "$PREFIX_DIR/lib/libbarvinok.dylib" || -f "$PREFIX_DIR/lib/libbarvinok.so" ]]; then
+  echo "Found cached prefix with Barvinok; skipping rebuild of GMP/NTL/Barvinok."
+  SKIP_NATIVE_BUILD=1
+else
+  SKIP_NATIVE_BUILD=0
+fi
 
 # Ensure required build tools
 ensure_autotools() {
@@ -62,63 +86,69 @@ fi
   scikit-build-core nanobind pcpp typing_extensions \
   tomli flit_core hatchling trove-classifiers calver || true
 
-# ------------------------------
-# Build GMP into local PREFIX_DIR
-# ------------------------------
-pushd "$SRC_DIR"
-curl -L -O https://ftp.gnu.org/gnu/gmp/gmp-"$GMP_VER".tar.xz || curl -L -O https://gmplib.org/download/gmp/gmp-"$GMP_VER".tar.xz
-tar xJf gmp-"$GMP_VER".tar.xz
-pushd gmp-"$GMP_VER"
-./configure --prefix="$PREFIX_DIR" --enable-shared
-make -j"$NPROCS"
-make install
-popd
-
-# ------------------------------
-# Build NTL into local PREFIX_DIR
-# ------------------------------
-pushd "$SRC_DIR"
-curl -L -O --insecure http://shoup.net/ntl/ntl-"$NTL_VER".tar.gz
-tar xfz ntl-"$NTL_VER".tar.gz
-pushd ntl-$NTL_VER/src
-./configure NTL_GMP_LIP=on DEF_PREFIX="$PREFIX_DIR" GMP_PREFIX="$PREFIX_DIR" TUNE=x86 SHARED=on
-make -j"$NPROCS"
-make install
-popd
-
-# --------------------------------------
-# Build Barvinok (and ISL) into the prefix
-# --------------------------------------
-pushd "$SRC_DIR"
-rm -rf barvinok || true
-git clone https://github.com/inducer/barvinok.git
-pushd barvinok
-git checkout "$BARVINOK_GIT_REV"
-ensure_autotools
-numtries=1
-while ! ./get_submodules.sh; do
-  sleep 5
-  numtries=$((numtries+1))
-  if [[ "$numtries" == 5 ]]; then
-    echo "*** getting barvinok submodules failed even after a few tries"
-    exit 1
-  fi
-done
-sh autogen.sh
-./configure \
-  --prefix="$PREFIX_DIR" \
-  --with-ntl-prefix="$PREFIX_DIR" \
-  --with-gmp-prefix="$PREFIX_DIR" \
-  --enable-shared-barvinok \
-  --with-pet=no
-
-BARVINOK_ADDITIONAL_MAKE_ARGS=""
-if [[ "$(uname)" == "Darwin" ]]; then
-  BARVINOK_ADDITIONAL_MAKE_ARGS=CFLAGS="-Wno-error=implicit-function-declaration"
+if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
+  # ------------------------------
+  # Build GMP into local PREFIX_DIR
+  # ------------------------------
+  pushd "$SRC_DIR"
+  curl -L -O https://ftp.gnu.org/gnu/gmp/gmp-"$GMP_VER".tar.xz || curl -L -O https://gmplib.org/download/gmp/gmp-"$GMP_VER".tar.xz
+  tar xJf gmp-"$GMP_VER".tar.xz
+  pushd gmp-"$GMP_VER"
+  ./configure --prefix="$PREFIX_DIR" --enable-shared
+  make -j"$NPROCS"
+  make install
+  popd
 fi
-make $BARVINOK_ADDITIONAL_MAKE_ARGS -j"$NPROCS"
-make install
-popd
+
+if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
+  # ------------------------------
+  # Build NTL into local PREFIX_DIR
+  # ------------------------------
+  pushd "$SRC_DIR"
+  curl -L -O --insecure http://shoup.net/ntl/ntl-"$NTL_VER".tar.gz
+  tar xfz ntl-"$NTL_VER".tar.gz
+  pushd ntl-$NTL_VER/src
+  ./configure NTL_GMP_LIP=on DEF_PREFIX="$PREFIX_DIR" GMP_PREFIX="$PREFIX_DIR" TUNE=x86 SHARED=on
+  make -j"$NPROCS"
+  make install
+  popd
+fi
+
+if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
+  # --------------------------------------
+  # Build Barvinok (and ISL) into the prefix
+  # --------------------------------------
+  pushd "$SRC_DIR"
+  rm -rf barvinok || true
+  git clone https://github.com/inducer/barvinok.git
+  pushd barvinok
+  git checkout "$BARVINOK_GIT_REV"
+  ensure_autotools
+  numtries=1
+  while ! ./get_submodules.sh; do
+    sleep 5
+    numtries=$((numtries+1))
+    if [[ "$numtries" == 5 ]]; then
+      echo "*** getting barvinok submodules failed even after a few tries"
+      exit 1
+    fi
+  done
+  sh autogen.sh
+  ./configure \
+    --prefix="$PREFIX_DIR" \
+    --with-ntl-prefix="$PREFIX_DIR" \
+    --with-gmp-prefix="$PREFIX_DIR" \
+    --enable-shared-barvinok \
+    --with-pet=no
+
+  BARVINOK_ADDITIONAL_MAKE_ARGS=""
+  if [[ "$(uname)" == "Darwin" ]]; then
+    BARVINOK_ADDITIONAL_MAKE_ARGS=CFLAGS="-Wno-error=implicit-function-declaration"
+  fi
+  make $BARVINOK_ADDITIONAL_MAKE_ARGS -j"$NPROCS"
+  make install
+  popd
+fi
 
 # --------------------------------------
 # Build islpy with Barvinok, rename package
