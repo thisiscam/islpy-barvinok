@@ -35,24 +35,29 @@ def _run_build_all(temp_build_root: str) -> tuple[str, list[str]]:
 
     subprocess.check_call(["bash", script_path], cwd=_project_root(), env=env)
 
-    repaired_dir = os.path.join(temp_build_root, "wheelhouse-repaired")
-    wheelhouse_dir = os.path.join(temp_build_root, "wheelhouse")
+    # Collect candidate wheel directories from both temp and configured BUILD_ROOT
+    build_root = env["BUILD_ROOT"]
+    candidate_dirs = [
+        os.path.join(temp_build_root, "wheelhouse-repaired"),
+        os.path.join(temp_build_root, "wheelhouse"),
+        os.path.join(build_root, "wheelhouse-repaired"),
+        os.path.join(build_root, "wheelhouse"),
+    ]
 
-    wheels = []
-    if os.path.isdir(repaired_dir):
-        wheels.extend(sorted(glob.glob(os.path.join(repaired_dir, "*.whl"))))
-    if not wheels and os.path.isdir(wheelhouse_dir):
-        wheels.extend(sorted(glob.glob(os.path.join(wheelhouse_dir, "*.whl"))))
+    wheels: list[str] = []
+    chosen_dir: str | None = None
+    for cand in candidate_dirs:
+        if os.path.isdir(cand):
+            found = sorted(glob.glob(os.path.join(cand, "*.whl")))
+            if found:
+                wheels.extend(found)
+                if chosen_dir is None:
+                    chosen_dir = cand
 
-    if not wheels:
+    if not wheels or chosen_dir is None:
         raise RuntimeError("Build script did not produce any wheels")
 
-    return (
-        repaired_dir
-        if wheels and wheels[0].startswith(repaired_dir)
-        else wheelhouse_dir,
-        wheels,
-    )
+    return (chosen_dir, wheels)
 
 
 def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):  # noqa: N802 (pep517 signature)
