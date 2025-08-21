@@ -116,9 +116,10 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
 
 def build_sdist(sdist_directory, config_settings=None):  # noqa: N802
     os.makedirs(sdist_directory, exist_ok=True)
-    # Create a minimal sdist with only what's needed to build
+    # Create an sdist that includes PKG-INFO as required by PyPI/twine
     root = _project_root()
-    base_name = f"islpy-barvinok-{_read_project_version(root)}"
+    meta = _read_project_core_metadata(root)
+    base_name = f"{meta['name']}-{meta['version']}"
     sdist_name = base_name + ".tar.gz"
     sdist_path = os.path.join(sdist_directory, sdist_name)
 
@@ -129,12 +130,64 @@ def build_sdist(sdist_directory, config_settings=None):  # noqa: N802
         "build_backend.py",
         os.path.join("scripts", "build_all.sh"),
     ]
+
+    # Best-effort long description from README.md
+    long_description = ""
+    readme_path = os.path.join(root, "README.md")
+    if os.path.exists(readme_path):
+        try:
+            with open(readme_path, "r", encoding="utf-8") as f:
+                long_description = f.read()
+        except OSError:
+            long_description = ""
+
+    # Compose PKG-INFO content per Core Metadata 2.1
+    pkg_info_lines: list[str] = []
+    pkg_info_lines.append("Metadata-Version: 2.1")
+    pkg_info_lines.append(f"Name: {meta['name']}")
+    pkg_info_lines.append(f"Version: {meta['version']}")
+    if meta.get("summary"):
+        pkg_info_lines.append(f"Summary: {meta['summary']}")
+    if meta.get("home_page"):
+        pkg_info_lines.append(f"Home-page: {meta['home_page']}")
+    if meta.get("author"):
+        pkg_info_lines.append(f"Author: {meta['author']}")
+    if meta.get("requires_python"):
+        pkg_info_lines.append(f"Requires-Python: {meta['requires_python']}")
+    # Point to included license file
+    pkg_info_lines.append("License-File: LICENSE")
+    for classifier in meta.get("classifiers", []):
+        pkg_info_lines.append(f"Classifier: {classifier}")
+    for url_name, url in meta.get("project_urls", {}).items():
+        pkg_info_lines.append(f"Project-URL: {url_name}, {url}")
+    # Long description
+    if long_description:
+        pkg_info_lines.append("Description-Content-Type: text/markdown")
+        pkg_info_lines.append("")
+        pkg_info_lines.append(long_description)
+
+    pkg_info_content = "\n".join(pkg_info_lines) + "\n"
+
     with tarfile.open(sdist_path, "w:gz") as tf:
+        # Add project files
         for rel in include_paths:
             src = os.path.join(root, rel)
             if not os.path.exists(src):
                 continue
             tf.add(src, arcname=os.path.join(base_name, rel))
+        # Add PKG-INFO at the root of the archive
+        pkg_info_tmp = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
+        try:
+            pkg_info_tmp.write(pkg_info_content)
+            pkg_info_tmp.flush()
+            pkg_info_tmp.close()
+            tf.add(pkg_info_tmp.name, arcname=os.path.join(base_name, "PKG-INFO"))
+        finally:
+            try:
+                os.unlink(pkg_info_tmp.name)
+            except OSError:
+                pass
+
     return os.path.basename(sdist_path)
 
 
@@ -160,3 +213,71 @@ def _read_project_version(root_dir: str) -> str:
     except OSError:
         pass
     return version
+
+
+def _read_project_core_metadata(root_dir: str) -> dict:
+    """Best-effort extraction of core metadata from pyproject.toml.
+
+    Avoid heavy dependencies. Prefer tomllib if available, else fall back to
+    simple line-based parsing for the fields we need.
+    """
+    pyproject_path = os.path.join(root_dir, "pyproject.toml")
+    data: dict = {}
+    try:
+        import tomllib  # Python 3.11+
+
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        # Fall back to minimal parsing
+        data = {}
+        try:
+            with open(pyproject_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except OSError:
+            lines = []
+        in_project = False
+        project: dict = {}
+        for raw in lines:
+            line = raw.strip()
+            if line == "[project]":
+                in_project = True
+                continue
+            if in_project and line.startswith("[") and "]" in line:
+                break
+            if in_project and "=" in line:
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                project[key] = val
+        data["project"] = project
+
+    project = data.get("project", {})
+    name = project.get("name", "islpy-barvinok")
+    version = project.get("version", _read_project_version(root_dir))
+    summary = project.get("description", "")
+    requires_python = project.get("requires-python", "")
+    # URLs
+    urls = data.get("project", {}).get("urls", {})
+    home_page = urls.get("Homepage") or urls.get("Home") or ""
+    # Author (first author only)
+    author = ""
+    authors = project.get("authors", [])
+    if isinstance(authors, list) and authors:
+        first = authors[0]
+        if isinstance(first, dict):
+            author = first.get("name") or ""
+        elif isinstance(first, str):
+            author = first
+    classifiers = project.get("classifiers", []) or []
+
+    return {
+        "name": name,
+        "version": version,
+        "summary": summary,
+        "home_page": home_page,
+        "author": author,
+        "requires_python": requires_python,
+        "classifiers": classifiers,
+        "project_urls": urls if isinstance(urls, dict) else {},
+    }
