@@ -52,10 +52,9 @@ jobs:
         env:
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BUILD: cp310-* cp311-* cp312-* cp313-*
-          # On macOS: pass-through (we delocate in-script). On Linux: run auditwheel to vendor libs
+          # We repair inside scripts/build_all.sh for both OSes; pass-through here
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: "bash -lc 'cp {wheel} {dest_dir}'"
-          CIBW_REPAIR_WHEEL_COMMAND_LINUX: \
-            "bash -lc 'for w in {wheel}; do auditwheel repair \"$w\" -w {dest_dir}; done'"
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "bash -lc 'cp {wheel} {dest_dir}'"
           BUILD_ROOT: ${{ github.workspace }}/build
           # Install autotools in manylinux containers before building
           CIBW_BEFORE_ALL_LINUX: |
