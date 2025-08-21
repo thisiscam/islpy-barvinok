@@ -342,7 +342,7 @@ popd
 # --------------------------------------
 # Optionally vendor native libs into wheel
 # --------------------------------------
-if command -v delocate-wheel >/dev/null 2>&1; then
+if [[ "$(uname)" == "Darwin" ]] && command -v delocate-wheel >/dev/null 2>&1; then
   # Derive deployment target from wheel tag if possible (e.g. macosx_14_0_arm64)
   WHL=$(ls "$WHEEL_DIR"/*.whl | head -n1 || true)
   if [[ -n "${WHL:-}" && "$WHL" =~ macosx_([0-9]+)_([0-9]+)_ ]]; then
@@ -361,7 +361,7 @@ if command -v delocate-wheel >/dev/null 2>&1; then
     --require-target-macos-version "${MACOSX_DEPLOYMENT_TARGET:-11.0}" \
     -w "$REPAIRED_DIR" \
     "$WHEEL_DIR"/*.whl || true
-elif command -v auditwheel >/dev/null 2>&1; then
+elif [[ "$(uname)" == "Linux" ]] && command -v auditwheel >/dev/null 2>&1; then
   for whl in "$WHEEL_DIR"/*.whl; do
     auditwheel repair "$whl" -w "$REPAIRED_DIR" || true
   done
