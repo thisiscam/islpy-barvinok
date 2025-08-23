@@ -48,6 +48,12 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install cibuildwheel
 
+      - name: Enable QEMU for cross-architecture builds (Linux)
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Build wheels with cibuildwheel
         env:
           CIBW_BUILD_VERBOSITY: 1
@@ -61,8 +67,10 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: |
             yum install -y autoconf automake libtool pkgconfig git curl || \
             (dnf install -y autoconf automake libtool pkgconfig git curl || true)
-          # Arch selection
-          CIBW_ARCHS_LINUX: x86_64
+          # Arch selection (build both x86_64 and aarch64 on Linux)
+          CIBW_ARCHS_LINUX: x86_64 aarch64
+          # Use manylinux image for aarch64 builds
+          CIBW_MANYLINUX_AARCH64_IMAGE: quay.io/pypa/manylinux2014_aarch64
           CIBW_ARCHS_MACOS: ${{ matrix.os == 'macos-13' && 'x86_64' || matrix.os == 'macos-14' && 'arm64' || '' }}
         run: |
           python -m cibuildwheel --output-dir wheelhouse
