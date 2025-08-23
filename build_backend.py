@@ -128,6 +128,7 @@ def build_sdist(sdist_directory, config_settings=None):  # noqa: N802
         "README.md",
         "LICENSE",
         "build_backend.py",
+        "config.sh",
         os.path.join("scripts", "build_all.sh"),
     ]
 
