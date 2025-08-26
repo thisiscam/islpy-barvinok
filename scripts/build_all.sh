@@ -43,6 +43,10 @@ NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
 mkdir -p "$BUILD_ROOT" "$PREFIX_DIR" "$SRC_DIR" "$WHEEL_DIR" "$REPAIRED_DIR"
 export ISLPY_VERSION
 
+# Derive base upstream islpy version (strip optional build suffix like "-1")
+ISLPY_BASE_VERSION=${ISLPY_BASE_VERSION:-"${ISLPY_VERSION%%-*}"}
+export ISLPY_BASE_VERSION
+
 echo "Using BUILD_ROOT=$BUILD_ROOT"
 echo "Using PREFIX_DIR=$PREFIX_DIR"
 if [[ -d "$PREFIX_DIR/lib" && -f "$PREFIX_DIR/lib/libbarvinok.dylib" || -f "$PREFIX_DIR/lib/libbarvinok.so" ]]; then
@@ -158,7 +162,7 @@ pushd "$SRC_DIR"
 # Download the islpy sdist directly from PyPI JSON to avoid invoking any build backend.
 python - <<'PY'
 import json, os, sys, urllib.request
-ver = os.environ.get("ISLPY_VERSION", "").strip()
+ver = (os.environ.get("ISLPY_BASE_VERSION") or os.environ.get("ISLPY_VERSION", "")).strip()
 if not ver:
     print("Missing ISLPY_VERSION", file=sys.stderr)
     sys.exit(1)
@@ -360,7 +364,7 @@ env -i \
   TMPDIR="${TMPDIR:-/tmp}" \
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
   DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH" \
-  ISLPY_VERSION="$ISLPY_VERSION" \
+  ISLPY_VERSION="$ISLPY_BASE_VERSION" \
   BUILD_ROOT="$BUILD_ROOT" \
   PREFIX_DIR="$PREFIX_DIR" \
   PEP517_BACKEND_PATH="$SITE_PACKAGES" \
