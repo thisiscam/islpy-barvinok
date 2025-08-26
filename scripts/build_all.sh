@@ -184,6 +184,9 @@ tar xfz "$SDIST"
 PKGDIR=$(echo islpy-*/)
 pushd "$PKGDIR"
 
+# Ensure GPL-2 LICENSE is present in the upstream source so wheels include it
+cp -f "$ROOT_DIR/LICENSE" "$PWD/LICENSE"
+
 # Discover site-packages path for the active interpreter
 SITE_PACKAGES=$("$PYTHON_BIN" - <<'PY'
 import sysconfig
@@ -199,6 +202,38 @@ txt = open(pth, 'r', encoding='utf-8').read()
 txt = txt.replace('name = "islpy"', 'name = "islpy-barvinok"')
 open(pth, 'w', encoding='utf-8').write(txt)
 print('Patched project name to islpy-barvinok')
+PY
+
+# Patch license metadata and classifier to GPL-2 and ensure License file is referenced
+python - "$PWD/pyproject.toml" <<'PY'
+import re, sys
+pth = sys.argv[1]
+txt = open(pth, 'r', encoding='utf-8').read()
+
+# Ensure license field points to bundled LICENSE
+if re.search(r'^license\s*=\s*', txt, flags=re.M):
+    txt = re.sub(r'^license\s*=.*$', 'license = { file = "LICENSE" }', txt, flags=re.M)
+else:
+    # Insert under [project] header
+    txt = re.sub(r'^(\[project\].*?)$', r"\\1\nlicense = { file = \"LICENSE\" }", txt, flags=re.S)
+
+# Replace MIT classifier with GPLv2; add if none present
+if 'License :: OSI Approved :: GNU General Public License v2 (GPLv2)' not in txt:
+    if re.search(r'^\s*"License :: OSI Approved :: MIT License"\s*,?\s*$', txt, flags=re.M):
+        txt = re.sub(r'^\s*"License :: OSI Approved :: MIT License"\s*,?\s*$',
+                     '  "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",',
+                     txt, flags=re.M)
+    else:
+        # Try to append to classifiers array if present
+        m = re.search(r"(\nclassifiers\s*=\s*\[)([\s\S]*?)(\])", txt)
+        if m:
+            start, body, end = m.groups()
+            if 'GNU General Public License v2' not in body:
+                body = body.rstrip() + "\n  \"License :: OSI Approved :: GNU General Public License v2 (GPLv2)\",\n"
+                txt = txt[:m.start()] + start + body + end + txt[m.end():]
+
+open(pth, 'w', encoding='utf-8').write(txt)
+print('Updated license metadata to GPL-2 and ensured LICENSE is included')
 PY
 
 # Ensure build-backend can be imported by adding backend-path to [build-system]
@@ -325,9 +360,9 @@ env -i \
   TMPDIR="${TMPDIR:-/tmp}" \
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
   DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH" \
+  ISLPY_VERSION="$ISLPY_VERSION" \
   BUILD_ROOT="$BUILD_ROOT" \
   PREFIX_DIR="$PREFIX_DIR" \
-  ISLPY_VERSION="$ISLPY_VERSION" \
   PEP517_BACKEND_PATH="$SITE_PACKAGES" \
   "$PYTHON_BIN" -m build \
     --wheel \
