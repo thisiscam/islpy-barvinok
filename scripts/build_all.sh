@@ -410,6 +410,39 @@ else
   echo "Skipping wheel repair (neither delocate-wheel nor auditwheel found)."
 fi
 
+# --------------------------------------
+# If ISLPY_VERSION includes a numeric build suffix (e.g., 2025.2.5-3), append it
+# as the wheel build tag (hyphenated) in the wheel filename per PEP 427.
+# This does not alter the internal metadata version.
+# --------------------------------------
+if [[ -n "${ISLPY_VERSION:-}" && "$ISLPY_VERSION" == *-* ]]; then
+  build_suffix="${ISLPY_VERSION#*-}"
+  if [[ "$build_suffix" =~ ^[0-9]+$ ]]; then
+    for d in "$REPAIRED_DIR" "$WHEEL_DIR"; do
+      if [[ -d "$d" ]]; then
+        for whl in "$d"/*.whl; do
+          [[ -e "$whl" ]] || continue
+          base=$(basename "$whl")
+          dir=$(dirname "$whl")
+          # Wheel filename: name-version(-build)?-py-abi-plat.whl
+          name_part=${base%%-*}
+          rest=${base#*-}
+          version_part=${rest%%-*}
+          tail=${rest#*-}
+          # Skip if version already has a build tag
+          if [[ "$version_part" == *-* ]]; then
+            continue
+          fi
+          new_base="${name_part}-${version_part}-${build_suffix}-${tail}"
+          if [[ "$new_base" != "$base" ]]; then
+            mv -f "$whl" "$dir/$new_base"
+          fi
+        done
+      fi
+    done
+  fi
+fi
+
 echo "Done. Artifacts:"
 echo "  Prefix: $PREFIX_DIR"
 echo "  Wheels: $WHEEL_DIR"
