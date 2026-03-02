@@ -256,6 +256,7 @@ def _read_project_core_metadata(root_dir: str) -> dict:
     project = data.get("project", {})
     name = project.get("name", "islpy-barvinok")
     version = project.get("version", _read_project_version(root_dir))
+    # Do not override upstream version for metadata; wheel filename tagging is handled post-build
     summary = project.get("description", "")
     requires_python = project.get("requires-python", "")
     # URLs

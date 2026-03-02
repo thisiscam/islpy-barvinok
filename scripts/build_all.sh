@@ -43,6 +43,12 @@ NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
 mkdir -p "$BUILD_ROOT" "$PREFIX_DIR" "$SRC_DIR" "$WHEEL_DIR" "$REPAIRED_DIR"
 export ISLPY_VERSION
 
+# Derive base upstream islpy version (strip .postN and optional -N build suffix)
+_stripped="${ISLPY_VERSION%%-*}"
+_stripped="${_stripped%.post*}"
+ISLPY_BASE_VERSION=${ISLPY_BASE_VERSION:-"$_stripped"}
+export ISLPY_BASE_VERSION
+
 echo "Using BUILD_ROOT=$BUILD_ROOT"
 echo "Using PREFIX_DIR=$PREFIX_DIR"
 if [[ -d "$PREFIX_DIR/lib" && -f "$PREFIX_DIR/lib/libbarvinok.dylib" || -f "$PREFIX_DIR/lib/libbarvinok.so" ]]; then
@@ -158,7 +164,7 @@ pushd "$SRC_DIR"
 # Download the islpy sdist directly from PyPI JSON to avoid invoking any build backend.
 python - <<'PY'
 import json, os, sys, urllib.request
-ver = os.environ.get("ISLPY_VERSION", "").strip()
+ver = (os.environ.get("ISLPY_BASE_VERSION") or os.environ.get("ISLPY_VERSION", "")).strip()
 if not ver:
     print("Missing ISLPY_VERSION", file=sys.stderr)
     sys.exit(1)
@@ -360,7 +366,7 @@ env -i \
   TMPDIR="${TMPDIR:-/tmp}" \
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
   DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH" \
-  ISLPY_VERSION="$ISLPY_VERSION" \
+  ISLPY_VERSION="$ISLPY_BASE_VERSION" \
   BUILD_ROOT="$BUILD_ROOT" \
   PREFIX_DIR="$PREFIX_DIR" \
   PEP517_BACKEND_PATH="$SITE_PACKAGES" \
@@ -404,6 +410,39 @@ elif [[ "$(uname)" == "Linux" ]] && command -v auditwheel >/dev/null 2>&1; then
   done
 else
   echo "Skipping wheel repair (neither delocate-wheel nor auditwheel found)."
+fi
+
+# --------------------------------------
+# If ISLPY_VERSION includes a numeric build suffix (e.g., 2025.2.5-3), append it
+# as the wheel build tag (hyphenated) in the wheel filename per PEP 427.
+# This does not alter the internal metadata version.
+# --------------------------------------
+if [[ -n "${ISLPY_VERSION:-}" && "$ISLPY_VERSION" == *-* ]]; then
+  build_suffix="${ISLPY_VERSION#*-}"
+  if [[ "$build_suffix" =~ ^[0-9]+$ ]]; then
+    for d in "$REPAIRED_DIR" "$WHEEL_DIR"; do
+      if [[ -d "$d" ]]; then
+        for whl in "$d"/*.whl; do
+          [[ -e "$whl" ]] || continue
+          base=$(basename "$whl")
+          dir=$(dirname "$whl")
+          # Wheel filename: name-version(-build)?-py-abi-plat.whl
+          name_part=${base%%-*}
+          rest=${base#*-}
+          version_part=${rest%%-*}
+          tail=${rest#*-}
+          # Skip if version already has a build tag
+          if [[ "$version_part" == *-* ]]; then
+            continue
+          fi
+          new_base="${name_part}-${version_part}-${build_suffix}-${tail}"
+          if [[ "$new_base" != "$base" ]]; then
+            mv -f "$whl" "$dir/$new_base"
+          fi
+        done
+      fi
+    done
+  fi
 fi
 
 echo "Done. Artifacts:"
