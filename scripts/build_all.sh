@@ -200,14 +200,16 @@ print(sysconfig.get_paths()["purelib"])
 PY
 )
 
-# Patch project name in pyproject.toml (islpy -> islpy-barvinok)
-python - "$PWD/pyproject.toml" <<'PY'
-import sys
+# Patch project name and version in pyproject.toml (islpy -> islpy-barvinok)
+python - "$PWD/pyproject.toml" "$ISLPY_VERSION" <<'PY'
+import re, sys
 pth = sys.argv[1]
+target_ver = sys.argv[2]
 txt = open(pth, 'r', encoding='utf-8').read()
 txt = txt.replace('name = "islpy"', 'name = "islpy-barvinok"')
+txt = re.sub(r'^version\s*=\s*"[^"]*"', f'version = "{target_ver}"', txt, flags=re.M)
 open(pth, 'w', encoding='utf-8').write(txt)
-print('Patched project name to islpy-barvinok')
+print(f'Patched project name to islpy-barvinok, version to {target_ver}')
 PY
 
 # Patch license metadata and classifier to GPL-2 and ensure License file is referenced
@@ -335,6 +337,8 @@ replacement = (
     '    VERSION_TEXT = metadata.version("islpy")\n'
     'except metadata.PackageNotFoundError:\n'
     '    VERSION_TEXT = metadata.version("islpy-barvinok")\n'
+    '# Strip .postN suffix so the numeric regex below can parse it as integers\n'
+    'VERSION_TEXT = VERSION_TEXT.split(".post")[0]\n'
 )
 if needle in txt and replacement not in txt:
     txt = txt.replace(needle, replacement)
@@ -366,7 +370,7 @@ env -i \
   TMPDIR="${TMPDIR:-/tmp}" \
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
   DYLD_LIBRARY_PATH="$DYLD_LIBRARY_PATH" \
-  ISLPY_VERSION="$ISLPY_BASE_VERSION" \
+  ISLPY_VERSION="$ISLPY_VERSION" \
   BUILD_ROOT="$BUILD_ROOT" \
   PREFIX_DIR="$PREFIX_DIR" \
   PEP517_BACKEND_PATH="$SITE_PACKAGES" \

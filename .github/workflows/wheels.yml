@@ -35,8 +35,9 @@ jobs:
           tag="${ref##*/}"
           if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(\.post[0-9]+)?(-[0-9]+)?$ ]]; then
             base_ver="${BASH_REMATCH[1]}"
+            post_suffix="${BASH_REMATCH[2]}"
             build_suffix="${BASH_REMATCH[3]}"
-            full_ver="$base_ver${build_suffix}"
+            full_ver="$base_ver${post_suffix}${build_suffix}"
           else
             # Fallback to pyproject version, stripping .postN suffix for base
             full_ver=$(sed -n 's/^version\s*=\s*"\([^"]*\)"/\1/p' pyproject.toml | head -n1)
@@ -133,8 +134,9 @@ jobs:
           tag="${ref##*/}"
           if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(\.post[0-9]+)?(-[0-9]+)?$ ]]; then
             base_ver="${BASH_REMATCH[1]}"
+            post_suffix="${BASH_REMATCH[2]}"
             build_suffix="${BASH_REMATCH[3]}"
-            full_ver="$base_ver${build_suffix}"
+            full_ver="$base_ver${post_suffix}${build_suffix}"
           else
             echo "Unexpected tag format: $tag" >&2
             exit 1
