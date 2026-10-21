@@ -209,6 +209,9 @@ def main() -> None:
         old.unlink()
 
     py = sys.executable
+    # PEP 517 isolated build environments may come without pip
+    if subprocess.run([py, "-m", "pip", "--version"], capture_output=True).returncode != 0:
+        run([py, "-m", "ensurepip", "--upgrade"])
     run([py, "-m", "pip", "install", "--upgrade",
          "scikit-build-core", "nanobind", "pcpp", "typing_extensions",
          "build", "cmake", "ninja", "setuptools", "wheel"])
