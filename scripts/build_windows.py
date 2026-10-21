@@ -53,7 +53,8 @@ def find_lib_exe() -> str | None:
         [str(vswhere), "-latest", "-products", "*",
          "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
          "-find", r"VC\Tools\MSVC\**\bin\Hostx64\x64\lib.exe"],
-        capture_output=True, text=True, check=False).stdout.split()
+        capture_output=True, text=True, check=False).stdout.splitlines()
+    out = [line.strip() for line in out if line.strip()]
     return out[0] if out else None
 
 
