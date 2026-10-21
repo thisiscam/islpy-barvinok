@@ -234,8 +234,11 @@ def main() -> None:
     patch_version_py(pkgdir / "islpy" / "version.py")
     patch_for_windows(pkgdir)
 
+    # Drop the outer PEP 517 hook settings (backend name/path of *this*
+    # project), which would otherwise leak into the inner islpy build.
     env = {k: v for k, v in os.environ.items()
-           if k not in ("PYTHONPATH", "PEP517_BUILD_BACKEND")}
+           if k != "PYTHONPATH"
+           and not k.startswith(("PEP517_", "_PYPROJECT_HOOKS_"))}
     env["PYTHONNOUSERSITE"] = "1"
     env["PYTHONUTF8"] = "1"
     env["ISLPY_DLL_DIRS"] = str(prefix / "bin")
