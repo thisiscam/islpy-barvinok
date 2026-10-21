@@ -60,4 +60,8 @@ test-command = "python -c \"import islpy as isl, sys; print(sys.version, isl.Set
 [tool.cibuildwheel.windows]
 # x86_64 only; native libs come from scripts/build_windows_native.sh (MSYS2 UCRT64)
 archs = ["AMD64"]
+# Vendor barvinok_bundle.dll from the native prefix (default BUILD_ROOT=build).
+# System32 goes before PATH so that the current VC++ runtime (msvcp140.dll) is
+# bundled rather than an older copy some other tool put on PATH.
+repair-wheel-command = 'delvewheel repair -v --add-path "{project}/build/prefix/bin;%SystemRoot%\System32" -w {dest_dir} {wheel}'
 

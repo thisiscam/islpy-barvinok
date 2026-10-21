@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: [cp312]
+        python: [cp310, cp311, cp312, cp313, cp314, cp315]
 
     steps:
       - uses: actions/checkout@v4
@@ -83,8 +83,6 @@ jobs:
           CIBW_BUILD: ${{ inputs.build || format('{0}-*', matrix.python) }}
           CIBW_ARCHS_WINDOWS: AMD64
           CIBW_ENVIRONMENT: ISLPY_VERSION=${{ env.ISLPY_VERSION }} ISLPY_BASE_VERSION=${{ env.ISLPY_BASE_VERSION }}
-          CIBW_BEFORE_BUILD_WINDOWS: pip install delvewheel
-          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: delvewheel repair -v --add-path "${{ github.workspace }}\build\prefix\bin" -w {dest_dir} {wheel}
           BUILD_ROOT: ${{ github.workspace }}\build
         run: python -m cibuildwheel --output-dir wheelhouse
 
