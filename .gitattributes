@@ -1,0 +1,2 @@
+# Shell scripts run under MSYS2/Git bash on Windows runners: keep LF endings
+*.sh text eol=lf

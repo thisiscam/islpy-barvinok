@@ -29,11 +29,18 @@ def _run_build_all(temp_build_root: str) -> tuple[str, list[str]]:
     env.pop("PYTHONPATH", None)
     env.pop("PEP517_BUILD_BACKEND", None)
 
-    script_path = os.path.join(_project_root(), "scripts", "build_all.sh")
+    if sys.platform == "win32":
+        # Native libs come prebuilt from scripts/build_windows_native.sh (MSYS2
+        # UCRT64); this script builds islpy itself with MSVC.
+        script_path = os.path.join(_project_root(), "scripts", "build_windows.py")
+        cmd = [sys.executable, script_path]
+    else:
+        script_path = os.path.join(_project_root(), "scripts", "build_all.sh")
+        cmd = ["bash", script_path]
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Missing build script: {script_path}")
 
-    subprocess.check_call(["bash", script_path], cwd=_project_root(), env=env)
+    subprocess.check_call(cmd, cwd=_project_root(), env=env)
 
     # Collect candidate wheel directories from both temp and configured BUILD_ROOT
     build_root = env["BUILD_ROOT"]
@@ -130,6 +137,8 @@ def build_sdist(sdist_directory, config_settings=None):  # noqa: N802
         "build_backend.py",
         "config.sh",
         os.path.join("scripts", "build_all.sh"),
+        os.path.join("scripts", "build_windows.py"),
+        os.path.join("scripts", "build_windows_native.sh"),
     ]
 
     # Best-effort long description from README.md
