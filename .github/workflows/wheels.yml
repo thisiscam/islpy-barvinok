@@ -15,11 +15,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, macos-14]
+        # Linux aarch64 builds natively on ubuntu-24.04-arm (no QEMU)
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-14]
         arch: [x86_64, aarch64, arm64]
-        python: [cp310, cp311, cp312, cp313]
+        python: [cp310, cp311, cp312, cp313, cp314, cp315]
         exclude:
+          - { os: ubuntu-latest, arch: aarch64 }
           - { os: ubuntu-latest, arch: arm64 }
+          - { os: ubuntu-24.04-arm, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: arm64 }
           - { os: macos-15-intel, arch: aarch64 }
           - { os: macos-15-intel, arch: arm64 }
           - { os: macos-14, arch: aarch64 }
@@ -72,13 +76,7 @@ jobs:
       - name: Install cibuildwheel
         run: |
           python -m pip install --upgrade pip
-          python -m pip install cibuildwheel
-
-      - name: Enable QEMU for cross-architecture builds (Linux aarch64)
-        if: runner.os == 'Linux' && matrix.arch == 'aarch64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+          python -m pip install "cibuildwheel==4.3.3"
 
       - name: Build wheels with cibuildwheel
         env:
@@ -97,8 +95,7 @@ jobs:
             yum install -y autoconf automake libtool pkgconfig git curl || \
             (dnf install -y autoconf automake libtool pkgconfig git curl || true)
           # Arch selection per platform
-          CIBW_ARCHS_LINUX: ${{ matrix.os == 'ubuntu-latest' && matrix.arch || '' }}
-          CIBW_MANYLINUX_AARCH64_IMAGE: quay.io/pypa/manylinux2014_aarch64
+          CIBW_ARCHS_LINUX: ${{ startsWith(matrix.os, 'ubuntu-') && matrix.arch || '' }}
           CIBW_ARCHS_MACOS: ${{ startsWith(matrix.os, 'macos-') && matrix.arch || '' }}
         run: |
           python -m cibuildwheel --output-dir wheelhouse

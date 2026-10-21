@@ -294,15 +294,16 @@ if txt2 != txt:
     print('Ensured tool.scikit-build.wheel.packages = ["islpy"]')
 PY
 
-# Loosen Python requirement to support building across 3.10–3.13
+# Normalize the Python requirement (no upper cap; new CPython versions are
+# added via the cibuildwheel build matrix)
 python - "$PWD/pyproject.toml" <<'PY'
 import re, sys
 pth = sys.argv[1]
 txt = open(pth, 'r', encoding='utf-8').read()
-txt2 = re.sub(r"^requires-python\s*=\s*\"[^\"]*\"", "requires-python = \">=3.10,<3.14\"", txt, flags=re.M)
+txt2 = re.sub(r"^requires-python\s*=\s*\"[^\"]*\"", "requires-python = \">=3.10\"", txt, flags=re.M)
 if txt2 != txt:
     open(pth, 'w', encoding='utf-8').write(txt2)
-    print('Relaxed requires-python to ">=3.10,<3.14"')
+    print('Set requires-python to ">=3.10"')
 else:
     print('requires-python already suitable or not found; leaving as-is')
 PY

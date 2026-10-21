@@ -1,9 +1,9 @@
 [project]
 name = "islpy-barvinok"
-version = "2025.2.5.post1"
+version = "2026.2.2"
 description = "islpy built with Barvinok and vendored native libs (Linux/macOS). Falls back to source build if wheel unavailable."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Cambridge Yang" }]
 classifiers = [
@@ -44,12 +44,15 @@ build = [
   "cp311-*",
   "cp312-*",
   "cp313-*",
+  "cp314-*",
+  "cp315-*",
 ]
 skip = [
   "*musllinux*",
   "*win*",
 ]
-test-command = "python -c \"import islpy, sys; print('ok', sys.version)\""
+# Smoke test that Barvinok is actually linked in (card() needs it)
+test-command = "python -c \"import islpy as isl, sys; print(sys.version, isl.Set('[N] -> {[x, y] : 0 <= x <= N and 0 <= y <= N}').card())\""
 
 [tool.cibuildwheel.macos]
 

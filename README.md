@@ -7,7 +7,7 @@ builds Barvinok/NTL/ISL via a reproducible script, builds `islpy` with `USE_BARV
 and publishes wheels. It keeps the import name as `islpy` for compatibility, while the
 distribution name on PyPI is `islpy-barvinok`.
 
-Supported platforms: Linux x86_64 (manylinux) and macOS 11+ (x86_64 and arm64).
+Prebuilt wheels: CPython 3.10–3.15 on Linux x86_64/aarch64 (manylinux_2_28) and macOS (x86_64 and arm64).
 
 Upstream project: [inducer/islpy](https://github.com/inducer/islpy). This repo tracks upstream
 `islpy` releases on PyPI and rebuilds with Barvinok enabled.
