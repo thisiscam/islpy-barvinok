@@ -65,9 +65,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/build/prefix
-          key: prefix-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8
-          restore-keys: |
-            prefix-${{ matrix.os }}-${{ matrix.arch }}-
+          # Keyed on the build script so changes to native build flags never
+          # reuse a stale prefix (no restore-keys fallback on purpose)
+          key: prefix-v2-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8-${{ hashFiles('config.sh', 'scripts/build_all.sh') }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -106,7 +106,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/build/prefix
-          key: prefix-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8
+          key: prefix-v2-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8-${{ hashFiles('config.sh', 'scripts/build_all.sh') }}
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4

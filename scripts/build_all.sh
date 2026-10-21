@@ -40,6 +40,22 @@ NTL_VER=${NTL_VER:-${NTL_VER}}
 BARVINOK_GIT_REV=${BARVINOK_GIT_REV:-${BARVINOK_GIT_REV}}
 NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
 
+# Wheels must run on any CPU of the target architecture, not just the CI
+# machine that built them: GMP picks its code for the build CPU unless built
+# "fat" (runtime dispatch, x86 only; on aarch64 it already uses generic
+# armv8-a), NTL compiles with -march=native unless NATIVE=off, and isl's
+# configure guesses a -march from the build CPU unless --without-gcc-arch.
+case "$(uname -m)" in
+  x86_64|amd64|i?86)
+    GMP_CPU_ARGS=(--enable-fat)
+    NTL_TUNE=x86
+    ;;
+  *)
+    GMP_CPU_ARGS=()
+    NTL_TUNE=generic
+    ;;
+esac
+
 mkdir -p "$BUILD_ROOT" "$PREFIX_DIR" "$SRC_DIR" "$WHEEL_DIR" "$REPAIRED_DIR"
 export ISLPY_VERSION
 
@@ -100,7 +116,7 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
   curl -L -O https://ftp.gnu.org/gnu/gmp/gmp-"$GMP_VER".tar.xz || curl -L -O https://gmplib.org/download/gmp/gmp-"$GMP_VER".tar.xz
   tar xJf gmp-"$GMP_VER".tar.xz
   pushd gmp-"$GMP_VER"
-  ./configure --prefix="$PREFIX_DIR" --enable-shared
+  ./configure --prefix="$PREFIX_DIR" --enable-shared ${GMP_CPU_ARGS[@]+"${GMP_CPU_ARGS[@]}"}
   make -j"$NPROCS"
   make install
   popd
@@ -114,7 +130,8 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
   curl -L -O --insecure http://shoup.net/ntl/ntl-"$NTL_VER".tar.gz
   tar xfz ntl-"$NTL_VER".tar.gz
   pushd ntl-$NTL_VER/src
-  ./configure NTL_GMP_LIP=on DEF_PREFIX="$PREFIX_DIR" GMP_PREFIX="$PREFIX_DIR" TUNE=x86 SHARED=on
+  ./configure NTL_GMP_LIP=on DEF_PREFIX="$PREFIX_DIR" GMP_PREFIX="$PREFIX_DIR" \
+    NATIVE=off TUNE="$NTL_TUNE" SHARED=on
   make -j"$NPROCS"
   make install
   popd
@@ -145,7 +162,8 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
     --with-ntl-prefix="$PREFIX_DIR" \
     --with-gmp-prefix="$PREFIX_DIR" \
     --enable-shared-barvinok \
-    --with-pet=no
+    --with-pet=no \
+    --without-gcc-arch
 
   BARVINOK_ADDITIONAL_MAKE_ARGS=""
   if [[ "$(uname)" == "Darwin" ]]; then
