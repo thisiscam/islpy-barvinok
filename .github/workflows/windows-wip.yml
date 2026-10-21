@@ -84,6 +84,11 @@ jobs:
           CIBW_ARCHS_WINDOWS: AMD64
           CIBW_ENVIRONMENT: ISLPY_VERSION=${{ env.ISLPY_VERSION }} ISLPY_BASE_VERSION=${{ env.ISLPY_BASE_VERSION }}
           BUILD_ROOT: ${{ github.workspace }}\build
+          # One-off extra verification: upstream islpy's own test suite
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: >-
+            python -c "import islpy as isl, sys; print(sys.version, isl.Set('[N] -> {[x, y] : 0 <= x <= N and 0 <= y <= N}').card())"
+            && python -m pytest -q -p no:cacheprovider ${{ github.workspace }}\build\src\islpy-${{ env.ISLPY_BASE_VERSION }}\test
         run: python -m cibuildwheel --output-dir wheelhouse
 
       - name: Upload wheel artifacts
