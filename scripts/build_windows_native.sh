@@ -70,25 +70,16 @@ popd
 # Barvinok + bundled isl and polylib (static)
 # --------------------------------------
 pushd "$SRC_DIR"
-rm -rf barvinok
-git clone https://github.com/inducer/barvinok.git
-pushd barvinok
-git checkout "$BARVINOK_GIT_REV"
-numtries=1
-while ! ./get_submodules.sh; do
-  sleep 5
-  numtries=$((numtries+1))
-  if [[ "$numtries" == 5 ]]; then
-    echo "*** getting barvinok submodules failed even after a few tries"
-    exit 1
-  fi
-done
+rm -rf "barvinok-$BARVINOK_VER"
+curl -fL --retry 5 -O "https://barvinok.sourceforge.io/barvinok-$BARVINOK_VER.tar.gz"
+echo "$BARVINOK_SHA256  barvinok-$BARVINOK_VER.tar.gz" | sha256sum -c -
+tar xzf "barvinok-$BARVINOK_VER.tar.gz"
+pushd "barvinok-$BARVINOK_VER"
 shopt -s nullglob
 for p in "$ROOT_DIR"/patches/windows/*.patch; do
   patch -p1 < "$p"
 done
 shopt -u nullglob
-sh autogen.sh
 ./configure \
   --prefix="$PREFIX_DIR" \
   --with-ntl-prefix="$PREFIX_DIR" \

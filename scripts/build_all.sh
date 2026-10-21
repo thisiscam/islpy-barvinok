@@ -37,7 +37,7 @@ if [[ -z "${ISLPY_VERSION:-}" ]]; then
 fi
 GMP_VER=${GMP_VER:-${GMP_VER}}
 NTL_VER=${NTL_VER:-${NTL_VER}}
-BARVINOK_GIT_REV=${BARVINOK_GIT_REV:-${BARVINOK_GIT_REV}}
+BARVINOK_VER=${BARVINOK_VER:-${BARVINOK_VER}}
 NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
 
 # Wheels must run on any CPU of the target architecture, not just the CI
@@ -142,21 +142,12 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
   # Build Barvinok (and ISL) into the prefix
   # --------------------------------------
   pushd "$SRC_DIR"
-  rm -rf barvinok || true
-  git clone https://github.com/inducer/barvinok.git
-  pushd barvinok
-  git checkout "$BARVINOK_GIT_REV"
-  ensure_autotools
-  numtries=1
-  while ! ./get_submodules.sh; do
-    sleep 5
-    numtries=$((numtries+1))
-    if [[ "$numtries" == 5 ]]; then
-      echo "*** getting barvinok submodules failed even after a few tries"
-      exit 1
-    fi
-  done
-  sh autogen.sh
+  rm -rf barvinok-"$BARVINOK_VER" || true
+  curl -fL --retry 5 -O https://barvinok.sourceforge.io/barvinok-"$BARVINOK_VER".tar.gz
+  "$PYTHON_BIN" -c 'import hashlib, sys; h = hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(); sys.exit(0 if h == sys.argv[2] else "sha256 mismatch for " + sys.argv[1] + ": " + h)' \
+    barvinok-"$BARVINOK_VER".tar.gz "$BARVINOK_SHA256"
+  tar xzf barvinok-"$BARVINOK_VER".tar.gz
+  pushd barvinok-"$BARVINOK_VER"
   ./configure \
     --prefix="$PREFIX_DIR" \
     --with-ntl-prefix="$PREFIX_DIR" \
