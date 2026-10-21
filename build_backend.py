@@ -139,6 +139,7 @@ def build_sdist(sdist_directory, config_settings=None):  # noqa: N802
         os.path.join("scripts", "build_all.sh"),
         os.path.join("scripts", "build_windows.py"),
         os.path.join("scripts", "build_windows_native.sh"),
+        os.path.join("patches", "windows"),
     ]
 
     # Best-effort long description from README.md

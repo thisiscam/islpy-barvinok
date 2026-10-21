@@ -1,0 +1,24 @@
+zsolve: MinGW defines _POSIX_TIMERS but has no getrusage(); use clock() on Windows.
+
+diff --git a/zsolve/cputime.c b/zsolve/cputime.c
+index d9e4869..30e7f7f 100644
+--- a/zsolve/cputime.c
++++ b/zsolve/cputime.c
+@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ 
+ #include <assert.h>
+ #include <stdlib.h>
+-#ifdef _POSIX_TIMERS
++#if defined(_POSIX_TIMERS) && !defined(_WIN32)
+ #include <sys/time.h>
+ #include <sys/resource.h>
+ #endif
+@@ -36,7 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ 
+ double getCPUTime()
+ {
+-#ifdef _POSIX_TIMERS
++#if defined(_POSIX_TIMERS) && !defined(_WIN32)
+ 	struct rusage usage;
+ 
+ 	getrusage(RUSAGE_SELF, &usage);
