@@ -7,6 +7,7 @@ on:
       - "v*"
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build_wheels:
@@ -114,10 +115,128 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
+  # Windows: NTL/Barvinok/isl/polylib are built once with MSYS2 UCRT64 into a
+  # single barvinok_bundle.dll (scripts/build_windows_native.sh); the wheel jobs
+  # below then only build the islpy extension itself with MSVC.
+  build_native_windows:
+    name: Build native libs (windows-latest / AMD64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore native prefix cache (NTL/Barvinok/isl/polylib)
+        id: prefix-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/prefix
+          key: prefix-windows-ucrt64-ntl-10.5.0-barvinok-0.41.8-${{ hashFiles('config.sh', 'scripts/build_windows_native.sh', 'patches/windows/**') }}
+
+      - name: Set up MSYS2 (UCRT64)
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            git
+            make
+            patch
+            perl
+            curl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-gmp
+
+      - name: Build native libs with MSYS2 UCRT64
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        env:
+          BUILD_ROOT: ${{ github.workspace }}/build
+        run: bash scripts/build_windows_native.sh
+
+      - name: Save native prefix cache
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/prefix
+          key: ${{ steps.prefix-cache.outputs.cache-primary-key }}
+
+      - name: Upload native prefix
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-prefix-windows-AMD64
+          path: build/prefix
+          if-no-files-found: error
+          retention-days: 3
+
+  build_wheels_windows:
+    name: Build wheels (windows-latest / AMD64 / ${{ matrix.python }})
+    needs: [build_native_windows]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [cp310, cp311, cp312, cp313, cp314, cp315]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive ISLPY versions from tag or pyproject
+        shell: bash
+        run: |
+          ref="${GITHUB_REF:-${{ github.ref }}}"
+          tag="${ref##*/}"
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(\.post[0-9]+)?(-[0-9]+)?$ ]]; then
+            base_ver="${BASH_REMATCH[1]}"
+            post_suffix="${BASH_REMATCH[2]}"
+            build_suffix="${BASH_REMATCH[3]}"
+            full_ver="$base_ver${post_suffix}${build_suffix}"
+          else
+            # Fallback to pyproject version, stripping .postN suffix for base
+            full_ver=$(sed -n 's/^version\s*=\s*"\([^"]*\)"/\1/p' pyproject.toml | head -n1)
+            base_ver="${full_ver%.post*}"
+          fi
+          echo "ISLPY_VERSION=$full_ver" >> $GITHUB_ENV
+          echo "ISLPY_BASE_VERSION=$base_ver" >> $GITHUB_ENV
+
+      - name: Download native prefix
+        uses: actions/download-artifact@v4
+        with:
+          name: native-prefix-windows-AMD64
+          path: build/prefix
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "cibuildwheel==4.3.3"
+
+      - name: Build wheels with cibuildwheel
+        env:
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_ENVIRONMENT: ISLPY_VERSION=${{ env.ISLPY_VERSION }} ISLPY_BASE_VERSION=${{ env.ISLPY_BASE_VERSION }}
+          # build/prefix is also where [tool.cibuildwheel.windows] repair-wheel-command
+          # (delvewheel) looks for barvinok_bundle.dll
+          BUILD_ROOT: ${{ github.workspace }}\build
+        run: python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-AMD64-${{ matrix.python }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
     name: Publish to PyPI
-    needs: [build_wheels]
+    needs: [build_wheels, build_wheels_windows]
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for PyPI Trusted Publishing (OIDC)
