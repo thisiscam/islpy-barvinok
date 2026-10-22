@@ -37,8 +37,24 @@ if [[ -z "${ISLPY_VERSION:-}" ]]; then
 fi
 GMP_VER=${GMP_VER:-${GMP_VER}}
 NTL_VER=${NTL_VER:-${NTL_VER}}
-BARVINOK_GIT_REV=${BARVINOK_GIT_REV:-${BARVINOK_GIT_REV}}
+BARVINOK_VER=${BARVINOK_VER:-${BARVINOK_VER}}
 NPROCS=${NPROCS:-$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null || nproc || echo 4)}
+
+# Wheels must run on any CPU of the target architecture, not just the CI
+# machine that built them: GMP picks its code for the build CPU unless built
+# "fat" (runtime dispatch, x86 only; on aarch64 it already uses generic
+# armv8-a), NTL compiles with -march=native unless NATIVE=off, and isl's
+# configure guesses a -march from the build CPU unless --without-gcc-arch.
+case "$(uname -m)" in
+  x86_64|amd64|i?86)
+    GMP_CPU_ARGS=(--enable-fat)
+    NTL_TUNE=x86
+    ;;
+  *)
+    GMP_CPU_ARGS=()
+    NTL_TUNE=generic
+    ;;
+esac
 
 mkdir -p "$BUILD_ROOT" "$PREFIX_DIR" "$SRC_DIR" "$WHEEL_DIR" "$REPAIRED_DIR"
 export ISLPY_VERSION
@@ -100,7 +116,7 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
   curl -L -O https://ftp.gnu.org/gnu/gmp/gmp-"$GMP_VER".tar.xz || curl -L -O https://gmplib.org/download/gmp/gmp-"$GMP_VER".tar.xz
   tar xJf gmp-"$GMP_VER".tar.xz
   pushd gmp-"$GMP_VER"
-  ./configure --prefix="$PREFIX_DIR" --enable-shared
+  ./configure --prefix="$PREFIX_DIR" --enable-shared ${GMP_CPU_ARGS[@]+"${GMP_CPU_ARGS[@]}"}
   make -j"$NPROCS"
   make install
   popd
@@ -114,7 +130,8 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
   curl -L -O --insecure http://shoup.net/ntl/ntl-"$NTL_VER".tar.gz
   tar xfz ntl-"$NTL_VER".tar.gz
   pushd ntl-$NTL_VER/src
-  ./configure NTL_GMP_LIP=on DEF_PREFIX="$PREFIX_DIR" GMP_PREFIX="$PREFIX_DIR" TUNE=x86 SHARED=on
+  ./configure NTL_GMP_LIP=on DEF_PREFIX="$PREFIX_DIR" GMP_PREFIX="$PREFIX_DIR" \
+    NATIVE=off TUNE="$NTL_TUNE" SHARED=on
   make -j"$NPROCS"
   make install
   popd
@@ -125,27 +142,19 @@ if [[ "$SKIP_NATIVE_BUILD" == 0 ]]; then
   # Build Barvinok (and ISL) into the prefix
   # --------------------------------------
   pushd "$SRC_DIR"
-  rm -rf barvinok || true
-  git clone https://github.com/inducer/barvinok.git
-  pushd barvinok
-  git checkout "$BARVINOK_GIT_REV"
-  ensure_autotools
-  numtries=1
-  while ! ./get_submodules.sh; do
-    sleep 5
-    numtries=$((numtries+1))
-    if [[ "$numtries" == 5 ]]; then
-      echo "*** getting barvinok submodules failed even after a few tries"
-      exit 1
-    fi
-  done
-  sh autogen.sh
+  rm -rf barvinok-"$BARVINOK_VER" || true
+  curl -fL --retry 5 -O https://barvinok.sourceforge.io/barvinok-"$BARVINOK_VER".tar.gz
+  "$PYTHON_BIN" -c 'import hashlib, sys; h = hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(); sys.exit(0 if h == sys.argv[2] else "sha256 mismatch for " + sys.argv[1] + ": " + h)' \
+    barvinok-"$BARVINOK_VER".tar.gz "$BARVINOK_SHA256"
+  tar xzf barvinok-"$BARVINOK_VER".tar.gz
+  pushd barvinok-"$BARVINOK_VER"
   ./configure \
     --prefix="$PREFIX_DIR" \
     --with-ntl-prefix="$PREFIX_DIR" \
     --with-gmp-prefix="$PREFIX_DIR" \
     --enable-shared-barvinok \
-    --with-pet=no
+    --with-pet=no \
+    --without-gcc-arch
 
   BARVINOK_ADDITIONAL_MAKE_ARGS=""
   if [[ "$(uname)" == "Darwin" ]]; then
@@ -294,15 +303,16 @@ if txt2 != txt:
     print('Ensured tool.scikit-build.wheel.packages = ["islpy"]')
 PY
 
-# Loosen Python requirement to support building across 3.10–3.13
+# Normalize the Python requirement (no upper cap; new CPython versions are
+# added via the cibuildwheel build matrix)
 python - "$PWD/pyproject.toml" <<'PY'
 import re, sys
 pth = sys.argv[1]
 txt = open(pth, 'r', encoding='utf-8').read()
-txt2 = re.sub(r"^requires-python\s*=\s*\"[^\"]*\"", "requires-python = \">=3.10,<3.14\"", txt, flags=re.M)
+txt2 = re.sub(r"^requires-python\s*=\s*\"[^\"]*\"", "requires-python = \">=3.10\"", txt, flags=re.M)
 if txt2 != txt:
     open(pth, 'w', encoding='utf-8').write(txt2)
-    print('Relaxed requires-python to ">=3.10,<3.14"')
+    print('Set requires-python to ">=3.10"')
 else:
     print('requires-python already suitable or not found; leaving as-is')
 PY

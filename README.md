@@ -1,13 +1,13 @@
 # islpy-barvinok
 
-Prebuilt wheels and from-source builds of islpy with Barvinok enabled, with native libraries vendored on Linux and macOS.
+Prebuilt wheels and from-source builds of islpy with Barvinok enabled, with native libraries vendored on Linux, macOS and Windows.
 
 This project is a wrapper/builder: it fetches the upstream `islpy` sdist at a pinned version,
 builds Barvinok/NTL/ISL via a reproducible script, builds `islpy` with `USE_BARVINOK=ON`,
 and publishes wheels. It keeps the import name as `islpy` for compatibility, while the
 distribution name on PyPI is `islpy-barvinok`.
 
-Supported platforms: Linux x86_64 (manylinux) and macOS 11+ (x86_64 and arm64).
+Prebuilt wheels: CPython 3.10–3.15 on Linux x86_64/aarch64 (manylinux_2_28), macOS (x86_64 and arm64) and Windows x86_64.
 
 Upstream project: [inducer/islpy](https://github.com/inducer/islpy). This repo tracks upstream
 `islpy` releases on PyPI and rebuilds with Barvinok enabled.
@@ -33,6 +33,24 @@ islpy.Set("[N] -> {[x, y] : x >= 0 and y >= 0 and x <= N and y <= N}").card()
 - Vendor native libs into wheels:
   - Linux: `auditwheel repair`
   - macOS: `delocate-wheel`
+  - Windows: `delvewheel repair`
+
+### Windows
+
+Windows wheels are built in two stages:
+
+1. `scripts/build_windows_native.sh` (run in an MSYS2 **UCRT64** shell) builds NTL and
+   Barvinok (with its bundled isl and polylib) as static libraries with MinGW-w64 GCC,
+   and links them together with GMP (MSYS2's `--enable-fat` build) and the GCC runtime
+   into a single self-contained `barvinok_bundle.dll` (it only depends on system DLLs).
+   Patches needed for MinGW live in `patches/windows/`.
+2. `scripts/build_windows.py` (called by the PEP 517 backend on Windows) builds upstream
+   islpy with MSVC, linked against `barvinok_bundle.dll` through an MSVC import library.
+   Only isl/Barvinok C APIs cross the DLL boundary, and both sides use the UCRT, so
+   memory allocated by isl can be freed by the extension.
+
+With the default `BUILD_ROOT` (`build/`), `cibuildwheel` picks up the DLL from
+`build/prefix/bin` via `delvewheel` (see `[tool.cibuildwheel.windows]` in `pyproject.toml`).
 
 ## Building from source (PEP 517)
 
@@ -57,8 +75,15 @@ produces a wheel that `pip` installs. On macOS, native libraries may be vendored
 ## Releases and automation
 
 - Upstream tracking: a scheduled workflow checks PyPI for new `islpy` releases and opens a PR bumping the pinned version.
-- Tagging: when such a PR is merged into `main`, another workflow tags the repo with `v<version>`.
-- Publishing: tags trigger CI to build wheels on Linux and macOS and publish to PyPI via Trusted Publishing (OIDC).
+- Tagging: when such a PR is merged into `main`, another workflow tags the repo with `v<version>`
+  and starts `wheels.yml` on that tag (a tag pushed by a workflow does not trigger other
+  workflows by itself). Pushing a `v*` tag by hand also triggers it.
+- Testing: every wheel runs upstream islpy's test suite (`scripts/run_upstream_tests.py`).
+  The Linux x86_64 wheels are also checked for instructions newer than baseline x86-64 and
+  tested under qemu emulating Nehalem and Core 2 (`scripts/check_portability.sh`), so a
+  wheel that only works on CPUs like the CI runner's fails CI instead of crashing for users.
+- Publishing: on tags, CI builds wheels on Linux, macOS and Windows and, once all tests
+  pass, publishes them to PyPI via Trusted Publishing (OIDC).
 
 ## Development
 

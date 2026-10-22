@@ -7,6 +7,7 @@ on:
       - "v*"
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build_wheels:
@@ -15,11 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, macos-14]
+        # Linux aarch64 builds natively on ubuntu-24.04-arm (no QEMU)
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-14]
         arch: [x86_64, aarch64, arm64]
-        python: [cp310, cp311, cp312, cp313]
+        python: [cp310, cp311, cp312, cp313, cp314, cp315]
         exclude:
+          - { os: ubuntu-latest, arch: aarch64 }
           - { os: ubuntu-latest, arch: arm64 }
+          - { os: ubuntu-24.04-arm, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: arm64 }
           - { os: macos-15-intel, arch: aarch64 }
           - { os: macos-15-intel, arch: arm64 }
           - { os: macos-14, arch: aarch64 }
@@ -60,9 +65,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/build/prefix
-          key: prefix-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8
-          restore-keys: |
-            prefix-${{ matrix.os }}-${{ matrix.arch }}-
+          # Keyed on the build script so changes to native build flags never
+          # reuse a stale prefix (no restore-keys fallback on purpose)
+          key: prefix-v2-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8-${{ hashFiles('config.sh', 'scripts/build_all.sh') }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -72,13 +77,7 @@ jobs:
       - name: Install cibuildwheel
         run: |
           python -m pip install --upgrade pip
-          python -m pip install cibuildwheel
-
-      - name: Enable QEMU for cross-architecture builds (Linux aarch64)
-        if: runner.os == 'Linux' && matrix.arch == 'aarch64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+          python -m pip install "cibuildwheel==4.3.3"
 
       - name: Build wheels with cibuildwheel
         env:
@@ -97,8 +96,7 @@ jobs:
             yum install -y autoconf automake libtool pkgconfig git curl || \
             (dnf install -y autoconf automake libtool pkgconfig git curl || true)
           # Arch selection per platform
-          CIBW_ARCHS_LINUX: ${{ matrix.os == 'ubuntu-latest' && matrix.arch || '' }}
-          CIBW_MANYLINUX_AARCH64_IMAGE: quay.io/pypa/manylinux2014_aarch64
+          CIBW_ARCHS_LINUX: ${{ startsWith(matrix.os, 'ubuntu-') && matrix.arch || '' }}
           CIBW_ARCHS_MACOS: ${{ startsWith(matrix.os, 'macos-') && matrix.arch || '' }}
         run: |
           python -m cibuildwheel --output-dir wheelhouse
@@ -108,7 +106,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/build/prefix
-          key: prefix-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8
+          key: prefix-v2-${{ matrix.os }}-${{ matrix.arch }}-gmp-6.3.0-ntl-10.5.0-barvinok-0.41.8-${{ hashFiles('config.sh', 'scripts/build_all.sh') }}
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
@@ -117,10 +115,165 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
+  # Windows: NTL/Barvinok/isl/polylib are built once with MSYS2 UCRT64 into a
+  # single barvinok_bundle.dll (scripts/build_windows_native.sh); the wheel jobs
+  # below then only build the islpy extension itself with MSVC.
+  build_native_windows:
+    name: Build native libs (windows-latest / AMD64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore native prefix cache (NTL/Barvinok/isl/polylib)
+        id: prefix-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: build/prefix
+          key: prefix-windows-ucrt64-ntl-10.5.0-barvinok-0.41.8-${{ hashFiles('config.sh', 'scripts/build_windows_native.sh', 'patches/windows/**') }}
+
+      - name: Set up MSYS2 (UCRT64)
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            git
+            make
+            patch
+            perl
+            curl
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-gmp
+
+      - name: Build native libs with MSYS2 UCRT64
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        env:
+          BUILD_ROOT: ${{ github.workspace }}/build
+        run: bash scripts/build_windows_native.sh
+
+      - name: Save native prefix cache
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/prefix
+          key: ${{ steps.prefix-cache.outputs.cache-primary-key }}
+
+      - name: Upload native prefix
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-prefix-windows-AMD64
+          path: build/prefix
+          if-no-files-found: error
+          retention-days: 3
+
+  build_wheels_windows:
+    name: Build wheels (windows-latest / AMD64 / ${{ matrix.python }})
+    needs: [build_native_windows]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [cp310, cp311, cp312, cp313, cp314, cp315]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive ISLPY versions from tag or pyproject
+        shell: bash
+        run: |
+          ref="${GITHUB_REF:-${{ github.ref }}}"
+          tag="${ref##*/}"
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(\.post[0-9]+)?(-[0-9]+)?$ ]]; then
+            base_ver="${BASH_REMATCH[1]}"
+            post_suffix="${BASH_REMATCH[2]}"
+            build_suffix="${BASH_REMATCH[3]}"
+            full_ver="$base_ver${post_suffix}${build_suffix}"
+          else
+            # Fallback to pyproject version, stripping .postN suffix for base
+            full_ver=$(sed -n 's/^version\s*=\s*"\([^"]*\)"/\1/p' pyproject.toml | head -n1)
+            base_ver="${full_ver%.post*}"
+          fi
+          echo "ISLPY_VERSION=$full_ver" >> $GITHUB_ENV
+          echo "ISLPY_BASE_VERSION=$base_ver" >> $GITHUB_ENV
+
+      - name: Download native prefix
+        uses: actions/download-artifact@v4
+        with:
+          name: native-prefix-windows-AMD64
+          path: build/prefix
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cibuildwheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "cibuildwheel==4.3.3"
+
+      - name: Build wheels with cibuildwheel
+        env:
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_ENVIRONMENT: ISLPY_VERSION=${{ env.ISLPY_VERSION }} ISLPY_BASE_VERSION=${{ env.ISLPY_BASE_VERSION }}
+          # build/prefix is also where [tool.cibuildwheel.windows] repair-wheel-command
+          # (delvewheel) looks for barvinok_bundle.dll
+          BUILD_ROOT: ${{ github.workspace }}\build
+        run: python -m cibuildwheel --output-dir wheelhouse
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-AMD64-${{ matrix.python }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  # The Linux x86_64 wheels must run on any x86-64 CPU, not only on CPUs like
+  # the runner that built them: scan for AVX/BMI/ADX instructions and run the
+  # upstream tests under qemu emulating Nehalem and Core 2.
+  check_portability_linux:
+    name: Portability check (Linux x86_64 wheels on old CPUs)
+    needs: [build_wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux x86_64 wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-ubuntu-latest-x86_64-*
+          merge-multiple: true
+          path: wheelhouse
+
+      - name: Set up Python (one per wheel)
+        uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.10
+            3.11
+            3.12
+            3.13
+            3.14
+            3.15
+          allow-prereleases: true
+
+      - name: Install qemu-user
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user
+
+      - name: Check wheels
+        run: bash scripts/check_portability.sh wheelhouse
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
     name: Publish to PyPI
-    needs: [build_wheels]
+    needs: [build_wheels, build_wheels_windows, check_portability_linux]
     runs-on: ubuntu-latest
     permissions:
       id-token: write # Required for PyPI Trusted Publishing (OIDC)

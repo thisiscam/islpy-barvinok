@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # gh workflow run wheels.yml
 
 jobs:
   tag:
@@ -40,6 +41,7 @@ jobs:
           PY
 
       - name: Create and push tag if missing
+        id: tag
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
@@ -53,6 +55,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v${VERSION}" -m "islpy-barvinok ${VERSION}"
           git push origin "v${VERSION}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Note
-        run: echo "Pushed v${{ steps.ver.outputs.version }} tag. wheels.yml will build & publish to PyPI."
+      # A tag pushed with GITHUB_TOKEN does not trigger wheels.yml's push
+      # trigger (GitHub never starts workflows from GITHUB_TOKEN events), but
+      # workflow_dispatch is exempt from that rule.
+      - name: Build and publish the tag (wheels.yml)
+        if: steps.tag.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          gh workflow run wheels.yml --repo "$GITHUB_REPOSITORY" --ref "v${VERSION}"
+          echo "Started wheels.yml on v${VERSION}; it builds the wheels and publishes to PyPI."

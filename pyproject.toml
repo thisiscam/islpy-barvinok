@@ -1,9 +1,9 @@
 [project]
 name = "islpy-barvinok"
-version = "2025.2.5.post1"
+version = "2026.2.2"
 description = "islpy built with Barvinok and vendored native libs (Linux/macOS). Falls back to source build if wheel unavailable."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Cambridge Yang" }]
 classifiers = [
@@ -44,14 +44,26 @@ build = [
   "cp311-*",
   "cp312-*",
   "cp313-*",
+  "cp314-*",
+  "cp315-*",
 ]
 skip = [
   "*musllinux*",
-  "*win*",
 ]
-test-command = "python -c \"import islpy, sys; print('ok', sys.version)\""
+# Smoke test that Barvinok is actually linked in (card() needs it), then
+# upstream islpy's own test suite from the matching islpy sdist
+test-requires = ["pytest"]
+test-command = "python \"{project}/scripts/run_upstream_tests.py\""
 
 [tool.cibuildwheel.macos]
 
 [tool.cibuildwheel.linux]
+
+[tool.cibuildwheel.windows]
+# x86_64 only; native libs come from scripts/build_windows_native.sh (MSYS2 UCRT64)
+archs = ["AMD64"]
+# Vendor barvinok_bundle.dll from the native prefix (default BUILD_ROOT=build).
+# System32 goes before PATH so that the current VC++ runtime (msvcp140.dll) is
+# bundled rather than an older copy some other tool put on PATH.
+repair-wheel-command = 'delvewheel repair -v --add-path "{project}/build/prefix/bin;%SystemRoot%\System32" -w {dest_dir} {wheel}'
 
