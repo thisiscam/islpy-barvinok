@@ -75,8 +75,15 @@ produces a wheel that `pip` installs. On macOS, native libraries may be vendored
 ## Releases and automation
 
 - Upstream tracking: a scheduled workflow checks PyPI for new `islpy` releases and opens a PR bumping the pinned version.
-- Tagging: when such a PR is merged into `main`, another workflow tags the repo with `v<version>`.
-- Publishing: tags trigger CI to build wheels on Linux, macOS and Windows and publish to PyPI via Trusted Publishing (OIDC).
+- Tagging: when such a PR is merged into `main`, another workflow tags the repo with `v<version>`
+  and starts `wheels.yml` on that tag (a tag pushed by a workflow does not trigger other
+  workflows by itself). Pushing a `v*` tag by hand also triggers it.
+- Testing: every wheel runs upstream islpy's test suite (`scripts/run_upstream_tests.py`).
+  The Linux x86_64 wheels are also checked for instructions newer than baseline x86-64 and
+  tested under qemu emulating Nehalem and Core 2 (`scripts/check_portability.sh`), so a
+  wheel that only works on CPUs like the CI runner's fails CI instead of crashing for users.
+- Publishing: on tags, CI builds wheels on Linux, macOS and Windows and, once all tests
+  pass, publishes them to PyPI via Trusted Publishing (OIDC).
 
 ## Development
 

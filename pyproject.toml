@@ -50,8 +50,10 @@ build = [
 skip = [
   "*musllinux*",
 ]
-# Smoke test that Barvinok is actually linked in (card() needs it)
-test-command = "python -c \"import islpy as isl, sys; print(sys.version, isl.Set('[N] -> {[x, y] : 0 <= x <= N and 0 <= y <= N}').card())\""
+# Smoke test that Barvinok is actually linked in (card() needs it), then
+# upstream islpy's own test suite from the matching islpy sdist
+test-requires = ["pytest"]
+test-command = "python \"{project}/scripts/run_upstream_tests.py\""
 
 [tool.cibuildwheel.macos]
 
