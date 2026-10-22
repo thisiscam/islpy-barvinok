@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -126,7 +127,10 @@ def build_sdist(sdist_directory, config_settings=None):  # noqa: N802
     # Create an sdist that includes PKG-INFO as required by PyPI/twine
     root = _project_root()
     meta = _read_project_core_metadata(root)
-    base_name = f"{meta['name']}-{meta['version']}"
+    # PyPI only accepts sdists named after the normalized project name
+    # (PEP 625): islpy_barvinok-<version>.tar.gz, not islpy-barvinok-...
+    dist_name = re.sub(r"[-_.]+", "_", meta["name"]).lower()
+    base_name = f"{dist_name}-{meta['version']}"
     sdist_name = base_name + ".tar.gz"
     sdist_path = os.path.join(sdist_directory, sdist_name)
 
